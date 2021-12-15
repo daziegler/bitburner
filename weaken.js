@@ -1,3 +1,5 @@
+// Function will weaken servers from the validServers.txt if possible
+function weakenScript(args = []) {
     var serversToWeaken = read('validServers.txt').split(',');
     var serversToIgnore = [];
     while (serversToIgnore.length < serversToWeaken.length) {
@@ -20,3 +22,4 @@
             serversToIgnore.push(serverToWeaken);
         }
     }
+}
