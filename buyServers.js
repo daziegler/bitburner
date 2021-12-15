@@ -1,6 +1,7 @@
 function buyServers(args = []) {
     // Default, we buy until we hit the limit
-    var numberOfServers = getPurchasedServerLimit() - getPurchasedServers().length;
+    var purchasedServers = getPurchasedServers();
+    var numberOfServers = getPurchasedServerLimit() - purchasedServers.length;
     if (args.length > 0 && args[0] < numberOfServers) {
         numberOfServers = args[0];
     }
@@ -14,9 +15,9 @@ function buyServers(args = []) {
 
     var maxAffordableRam = 0;
     var purchasedServerMaxRam = getPurchasedServerMaxRam();
-    for (var r = 1; r * r <= purchasedServerMaxRam; r++) {
-        var ram = r * r;
-        if (getPurchasedServerCost(numberOfServers * ram) < player.money) {
+    for (var r = 1; Math.pow(2, r) <= purchasedServerMaxRam; r++) {
+        var ram = Math.pow(2, r);
+        if ((getPurchasedServerCost(ram) * numberOfServers) < player.money) {
             maxAffordableRam = ram;
             continue;
         }
@@ -25,12 +26,22 @@ function buyServers(args = []) {
     }
 
     if (maxAffordableRam === 0) {
-        return;
+        exit();
     }
 
-    // TODO: check if we already own the server, and if this would be an upgrade
     for (var i = 0; i < numberOfServers; i++) {
-        purchaseServer(serverNameTemplate + i, maxAffordableRam);
+        var newServerName = serverNameTemplate + i;
+        if (purchasedServers.includes(newServerName)) {
+            // If we already own the server, and it is better, than the best possible update, we buy a new one
+            // If it would be worse, we upgrade the server instead
+            if (getServerMaxRam(newServerName) >= maxAffordableRam) {
+                numberOfServers++;
+                continue;
+            } else {
+                deleteServer(newServerName);
+            }
+        }
+        purchaseServer(newServerName, maxAffordableRam);
     }
 
     spawn('validateServers.script');
