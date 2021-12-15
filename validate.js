@@ -1,30 +1,19 @@
 // This script will scan for Servers that already have root access or can be hacked with the given Skillset.
 // It will create two txt files:
 // - validServers.txt contains all servers, that could be hacked and are below the skill level of the user
+// - validServersWithoutOwn.txt as above, but excluding own servers
 // - invalidServers.txt contains all servers, that are too high level, have to many required ports etc.
-function validateScript(args = []) {
-    // Servers that should be ignored. This is useful to prevent hacking your own servers.
-    var serversToIgnore = [
-        "home",
-    ];
-
-    if (args.length > 0) {
-        serversToIgnore = args[0].split(',');
-    }
-
+function validate(args = []) {
     var serversToHack = scan("home");
     var validatedServers = [];
     var ignoredServers = [];
     var hackingLevel = getHackingLevel();
-  
+    var availablePortScripts = 1;
+
+    // Validation
     while ((ignoredServers.length + validatedServers.length) < serversToHack.length) {
         for (var v = 0; v < serversToHack.length; v++) {
             var serverToValidate = serversToHack[v];
-            if (serversToIgnore.includes(serverToValidate)) {
-                ignoredServers.push(serverToValidate);
-                continue;
-            }
-
             if (ignoredServers.includes(serverToValidate) || validatedServers.includes(serverToValidate)) {
                 continue;
             }
@@ -43,16 +32,11 @@ function validateScript(args = []) {
 
             if (hasRootAccess(serverToValidate) === false) {
                 var requiredPortAmountForServer = getServerNumPortsRequired(serverToValidate);
-              
-                // atm we only have brutessh available, so the amount is one.
-                // TODO: Change when more Port Hack Scripts are available.
-                var availablePortScriptAmount = 1;
                 if (requiredPortAmountForServer > availablePortScripts) {
                     ignoredServers.push(serverToValidate);
                     continue;
                 }
 
-                // TOOD: Add more Port Hack Scripts when they are available.
                 if (requiredPortAmountForServer > 0) {
                     brutessh(serverToValidate);
                 }
@@ -75,4 +59,14 @@ function validateScript(args = []) {
 
     write('validServers.txt', validatedServers, 'w');
     write('invalidServers.txt', ignoredServers, 'w');
+
+    var ownServers = getPurchasedServers();
+    ownServers.push('home');
+
+    for (var v = 0; v < validatedServers.length; v++) {
+        if (ownServers.includes(validatedServers[v])) {
+            validatedServers.splice(v, 1);
+        }
+    }
+    write('validServersWithoutOwn.txt', validatedServers, 'w');
 }
