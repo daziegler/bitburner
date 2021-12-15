@@ -27,6 +27,7 @@ function upgradeServers(args = []) {
             continue;
         }
 
+        killall(newServerName);
         deleteServer(server);
         purchaseServer(server, maxAffordableRam);
         requiresUpdate = true;
