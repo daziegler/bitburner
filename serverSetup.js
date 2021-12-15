@@ -7,7 +7,9 @@ function serverSetup(args = []) {
         'hack.script',
         'weaken.script',
         'validServers.txt'
+        'validServersWithoutOwn.txt'
     ];
+
     var scriptsToRun = [
         {name: 'hack.script', ramUse: getScriptRam('hack.script'), args: 1000000},
         {name: 'weaken.script', ramUse: getScriptRam('weaken.script'), args: ''},
