@@ -7,10 +7,7 @@ function upgradeServers(args = []) {
     var serverOptions = [];
 
     // Create an array with powers of 2 up to the max allowed ram
-    for (var r = 0; r * r <= (purchasedServerMaxRam/1024); r++) {
-        print(r);
-        print(r * r);
-        print(r * r * 1024);
+    for (var r = 1; r * r <= (purchasedServerMaxRam/1024); r++) {
         serverOptions.push(r * r * 1024);
     }
 
@@ -18,8 +15,6 @@ function upgradeServers(args = []) {
     serverOptions.sort(function(a, b) {
         return a - b;
     });
-
-    print(serverOptions.join(','));
 
     for (var i = 0; i < ownedServers.length; i++) {
         var server = ownedServers[i];
