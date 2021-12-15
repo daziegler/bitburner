@@ -3,11 +3,12 @@
 function hackScript(args = []) {
     // Arguments:
     var minMoneyToAttemptHack = 1000000;
+
     if (args.length >= 1) {
         minMoneyToAttemptHack = args[0];
     }
 
-    var serversToHack = read('validServers.txt').split(',');
+    var serversToHack = read('validServersWithoutOwn.txt').split(',');
     var toGrow = [];
 
     // Validation
