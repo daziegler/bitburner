@@ -4,36 +4,32 @@ function upgradeServers(args = []) {
     var player = getPlayer();
     var ownedServers = getPurchasedServers();
     var purchasedServerMaxRam = getPurchasedServerMaxRam();
-    var serverOptions = [];
+    var maxAffordableRam = 0;
 
-    // Create an array with powers of 2 up to the max allowed ram
-    for (var r = 1; r * r <= (purchasedServerMaxRam/1024); r++) {
-        serverOptions.push(r * r * 1024);
-    }
-
-    // Sort server options descending
-    serverOptions.sort(function(a, b) {
-        return a - b;
-    });
-
-    for (var i = 0; i < ownedServers.length; i++) {
-        var server = ownedServers[i];
-        var serverMaxRam = getServerMaxRam(server);
-        if (serverMaxRam >= purchasedServerMaxRam) {
+    for (var r = 1; r * r <= purchasedServerMaxRam; r++) {
+        var ram = r * r;
+        if (getPurchasedServerCost(ownedServers.length * ram) < player.money) {
+            maxAffordableRam = ram;
             continue;
         }
 
-        // try to buy the best server we can, if it is an upgrade
-        for (var j = 0; j < serverOptions.length; j++) {
-            var ram = serverOptions[j];
-            if (player.money < getPurchasedServerCost(ram)) {
-                continue;
-            }
-
-            deleteServer(server);
-            purchaseServer(server, ram);
-        }
+        break;
     }
 
-    spawn('validateServers.script');
+    var requiresUpdate = false;
+    for (var i = 0; i < ownedServers.length; i++) {
+        var server = ownedServers[i];
+        var serverMaxRam = getServerMaxRam(server);
+        if (serverMaxRam >= maxAffordableRam) {
+            continue;
+        }
+
+        deleteServer(server);
+        purchaseServer(server, maxAffordableRam);
+        requiresUpdate = true;
+    }
+
+    if (requiresUpdate) {
+        spawn('validateServers.script');
+    }
 }
