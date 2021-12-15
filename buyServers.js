@@ -14,7 +14,7 @@ function buyServers(args = []) {
 
     var maxAffordableRam = 0;
     var purchasedServerMaxRam = getPurchasedServerMaxRam();
-    for (var r = 0; r * r <= (purchasedServerMaxRam/1024); r++) {
+    for (var r = 1; r * r <= (purchasedServerMaxRam/1024); r++) {
         var ram = r * r * 1024
         if (getPurchasedServerCost(numberOfServers * ram) < player.money) {
             maxAffordableRam = ram;
