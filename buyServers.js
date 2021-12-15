@@ -38,6 +38,7 @@ function buyServers(args = []) {
                 numberOfServers++;
                 continue;
             } else {
+                killall(newServerName);
                 deleteServer(newServerName);
             }
         }
