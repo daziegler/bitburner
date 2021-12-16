@@ -6,7 +6,7 @@ function serverSetup(args = []) {
     var filesToCopy = [
         'hack.script',
         'weaken.script',
-        'validServers.txt'
+        'validServers.txt',
         'validServersWithoutOwn.txt'
     ];
 
