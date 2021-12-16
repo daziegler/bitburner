@@ -5,68 +5,72 @@
 // - invalidServers.txt contains all servers, that are too high level, have to many required ports etc.
 function validate(args = []) {
     var serversToHack = scan("home");
-    var validatedServers = [];
-    var ignoredServers = [];
-    var hackingLevel = getHackingLevel();
-    var availablePortScripts = 1;
+	var validatedServers = [];
+	var ignoredServers = [];
+	var hackingLevel = getHackingLevel();
+	var availablePortScripts = 0;
 
-    // Validation
-    while ((ignoredServers.length + validatedServers.length) < serversToHack.length) {
-        for (var v = 0; v < serversToHack.length; v++) {
-            var serverToValidate = serversToHack[v];
-		    if (ignoredServers.includes(serverToValidate) || validatedServers.includes(serverToValidate) || serverToValidate === 'home') {
-                continue;
-            }
+	// Validation
+	while ((ignoredServers.length + validatedServers.length) < serversToHack.length) {
+		for (var v = 0; v < serversToHack.length; v++) {
+			var serverToValidate = serversToHack[v];
+			if (ignoredServers.includes(serverToValidate) || validatedServers.includes(serverToValidate)) {
+				continue;
+			}
 
-            // Validation
-            if (validatedServers.includes(serverToValidate) === false) {
-                if (serverExists(serverToValidate) === false) {
-                    ignoredServers.push(serverToValidate);
-                    continue;
-                }
-                if (getServerRequiredHackingLevel(serverToValidate) > hackingLevel) {
-                    ignoredServers.push(serverToValidate);
-                    continue;
-                }
-            }
+			// Validation
+			if (validatedServers.includes(serverToValidate) === false) {
+				if (serverToValidate === 'home') {
+					ignoredServers.push(serverToValidate);
+					continue;
+				}
+				if (serverExists(serverToValidate) === false) {
+					ignoredServers.push(serverToValidate);
+					continue;
+				}
+				if (getServerRequiredHackingLevel(serverToValidate) > hackingLevel) {
+					ignoredServers.push(serverToValidate);
+					continue;
+				}
+			}
 
-            if (hasRootAccess(serverToValidate) === false) {
-                var requiredPortAmountForServer = getServerNumPortsRequired(serverToValidate);
-                if (requiredPortAmountForServer > availablePortScripts) {
-                    ignoredServers.push(serverToValidate);
-                    continue;
-                }
+			if (hasRootAccess(serverToValidate) === false) {
+				var requiredPortAmountForServer = getServerNumPortsRequired(serverToValidate);
+				if (requiredPortAmountForServer > availablePortScripts) {
+					ignoredServers.push(serverToValidate);
+					continue;
+				}
 
-                if (requiredPortAmountForServer > 0) {
-                    brutessh(serverToValidate);
-                }
+				if (requiredPortAmountForServer > 0) {
+					brutessh(serverToValidate);
+				}
 
-                nuke(serverToValidate);
-            }
+				nuke(serverToValidate);
+			}
 
-            validatedServers.push(serverToValidate);
+			validatedServers.push(serverToValidate);
 
-            var newTargets = scan(serverToValidate);
-            for (var x = 0; x < newTargets.length; x++) {
-                if (serversToHack.includes(newTargets[x])) {
-                    continue;
-                }
+			var newTargets = scan(serverToValidate);
+			for (var x = 0; x < newTargets.length; x++) {
+				if (serversToHack.includes(newTargets[x])) {
+					continue;
+				}
 
-                serversToHack.push(newTargets[x]);
-            }
-        }
-    }
+				serversToHack.push(newTargets[x]);
+			}
+		}
+	}
 
-    write('validServers.txt', validatedServers, 'w');
-    write('invalidServers.txt', ignoredServers, 'w');
+	write('validServers.txt', validatedServers, 'w');
+	write('invalidServers.txt', ignoredServers, 'w');
 
-    var ownServers = getPurchasedServers();
-    ownServers.push('home');
+	var ownServers = getPurchasedServers();
+	ownServers.push('home');
 
-    for (var v = 0; v < validatedServers.length; v++) {
-        if (ownServers.includes(validatedServers[v])) {
-            validatedServers.splice(v, 1);
-        }
-    }
-    write('validServersWithoutOwn.txt', validatedServers, 'w');
+	for (var v = 0; v < validatedServers.length; v++) {
+		if (ownServers.includes(validatedServers[v])) {
+			validatedServers.splice(v, 1);
+		}
+	}
+	write('validServersWithoutOwn.txt', validatedServers, 'w');
 }
