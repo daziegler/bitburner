@@ -14,7 +14,7 @@ function validate(args = []) {
     while ((ignoredServers.length + validatedServers.length) < serversToHack.length) {
         for (var v = 0; v < serversToHack.length; v++) {
             var serverToValidate = serversToHack[v];
-            if (ignoredServers.includes(serverToValidate) || validatedServers.includes(serverToValidate)) {
+		    if (ignoredServers.includes(serverToValidate) || validatedServers.includes(serverToValidate) || serverToValidate === 'home') {
                 continue;
             }
 
