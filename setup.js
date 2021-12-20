@@ -12,8 +12,8 @@ export async function main(ns) {
         'grow.ns',
     ];
 
-    // 1 hour (ms)
-    let refreshTime = 1000 * 60 * 60;
+    // 10 mins (ms)
+    let refreshTime = 1000 * 60 * 10;
 
     while (true) {
         let serversToSetup = await validateServers(ns);
@@ -23,7 +23,7 @@ export async function main(ns) {
 
         if (doTraining) {
             target = await getOptimalTrainingServer(ns, serversToHack);
-            script = 'weaken.js';
+            script = 'weaken.ns';
         } else {
             target = await getOptimalMoneyServer(ns, serversToHack);
             script = await selectBestScript(ns, target);
@@ -57,7 +57,7 @@ export async function main(ns) {
             refreshTime = ns.getHackTime(target);
         } else if (script === 'grow.ns') {
             refreshTime = ns.getGrowTime(target);
-        } else {
+        } else if (script === 'weaken.ns') {
             refreshTime = ns.getWeakenTime(target);
         }
 
@@ -165,23 +165,19 @@ async function validateServers(ns) {
                     continue;
                 }
 
-                if (requiredPortAmountForServer > 0) {
+                if (ns.fileExists("BruteSSH.exe", "home")) {
                     ns.brutessh(serverToValidate);
                 }
-
-                if (requiredPortAmountForServer > 1) {
+                if (ns.fileExists("FTPCrack.exe", "home")) {
                     ns.ftpcrack(serverToValidate);
                 }
-
-                if (requiredPortAmountForServer > 2) {
+                if (ns.fileExists("RelaySMTP.exe", "home")) {
                     ns.relaysmtp(serverToValidate);
                 }
-
-                if (requiredPortAmountForServer > 3) {
+                if (ns.fileExists("HTTPWorm.exe", "home")) {
                     ns.httpworm(serverToValidate);
                 }
-
-                if (requiredPortAmountForServer > 4) {
+                if (ns.fileExists("SQLInject.exe", "home")) {
                     ns.sqlinject(serverToValidate);
                 }
 
