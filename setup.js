@@ -13,25 +13,27 @@ export async function main(ns) {
     ];
 
     // 1 hour (ms)
-    const refreshTime = 1000 * 60 * 60;
+    let refreshTime = 1000 * 60 * 60;
 
     while (true) {
         let serversToSetup = await validateServers(ns);
         let serversToHack = await getServersToHack(ns, serversToSetup);
+        let target = '';
+        let script = '';
+
+        if (doTraining) {
+            target = await getOptimalTrainingServer(ns, serversToHack);
+            script = 'weaken.js';
+        } else {
+            target = await getOptimalMoneyServer(ns, serversToHack);
+            script = await selectBestScript(ns, target);
+        }
+
         for (let i = 0; i < serversToSetup.length; i++) {
             let serverName = serversToSetup[i];
             let maxRam = ns.getServerMaxRam(serverName);
             await ns.scp(filesToCopy, serverName);
             ns.killall(serverName);
-
-            let target = '';
-            let script = 'hack.ns';
-            if (doTraining) {
-                target = await getOptimalTrainingServer(ns, serversToHack);
-            } else {
-                target = await getOptimalMoneyServer(ns, serversToHack);
-                script = await selectBestScript(ns, target);
-            }
 
             let scriptRamUse = ns.getScriptRam(script, serverName);
             let usedRam = ns.getServerUsedRam(serverName);
@@ -49,6 +51,14 @@ export async function main(ns) {
             } else {
                 ns.exec(script, serverName, threads, target);
             }
+        }
+
+        if (script === 'hack.ns') {
+            refreshTime = ns.getHackTime(target);
+        } else if (script === 'grow.ns') {
+            refreshTime = ns.getGrowTime(target);
+        } else {
+            refreshTime = ns.getWeakenTime(target);
         }
 
         await ns.sleep(refreshTime);
@@ -104,7 +114,7 @@ async function getOptimalTrainingServer(ns, servers) {
  * @param {string} validServers
  **/
 async function selectBestScript(ns, target) {
-    let moneyThresh = ns.getServerMaxMoney(target) * 0.9;
+    let moneyThresh = ns.getServerMaxMoney(target) * 0.8;
     let securityThresh = ns.getServerMinSecurityLevel(target) * 1.1;
 
     if (ns.getServerSecurityLevel(target) > securityThresh) {
