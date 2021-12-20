@@ -1,19 +1,23 @@
-// This script will scan for Servers that already have root access or can be hacked with the given Skillset.
-// It will create two txt files:
-// - validServers.txt contains all servers, that could be hacked and are below the skill level of the user
-// - validServersWithoutOwn.txt as above, but excluding own servers
-// - invalidServers.txt contains all servers, that are too high level, have to many required ports etc.
-function validate(args = []) {
-    var serversToHack = scan("home");
-    var validatedServers = [];
-    var ignoredServers = [];
-    var hackingLevel = getHackingLevel();
-    var availablePortScripts = 4;
+/*
+This script will scan for Servers that already have root access or can be hacked with the given Skillset.
+It will create three txt files:
+- validServers.txt contains all servers, that could be hacked and are below the skill level of the user
+- validServersWithoutOwn.txt as above, but excluding own servers
+- invalidServers.txt contains all servers, that are too high level, have to many required ports etc.
+*/
+
+/** @param {NS} ns **/
+export async function main(ns) {
+    let serversToHack = ns.scan("home");
+    let validatedServers = [];
+    let ignoredServers = [];
+    let hackingLevel = ns.getHackingLevel();
+    let availablePortScripts = 2;
 
     // Validation
     while ((ignoredServers.length + validatedServers.length) < serversToHack.length) {
-        for (var v = 0; v < serversToHack.length; v++) {
-            var serverToValidate = serversToHack[v];
+        for (let v = 0; v < serversToHack.length; v++) {
+            let serverToValidate = serversToHack[v];
             if (ignoredServers.includes(serverToValidate) || validatedServers.includes(serverToValidate)) {
                 continue;
             }
@@ -24,50 +28,50 @@ function validate(args = []) {
                     ignoredServers.push(serverToValidate);
                     continue;
                 }
-                if (serverExists(serverToValidate) === false) {
+                if (ns.serverExists(serverToValidate) === false) {
                     ignoredServers.push(serverToValidate);
                     continue;
                 }
-                if (getServerRequiredHackingLevel(serverToValidate) > hackingLevel) {
+                if (ns.getServerRequiredHackingLevel(serverToValidate) > hackingLevel) {
                     ignoredServers.push(serverToValidate);
                     continue;
                 }
             }
 
-            if (hasRootAccess(serverToValidate) === false) {
-                var requiredPortAmountForServer = getServerNumPortsRequired(serverToValidate);
+            if (ns.hasRootAccess(serverToValidate) === false) {
+                let requiredPortAmountForServer = ns.getServerNumPortsRequired(serverToValidate);
                 if (requiredPortAmountForServer > availablePortScripts) {
                     ignoredServers.push(serverToValidate);
                     continue;
                 }
 
                 if (requiredPortAmountForServer > 0) {
-                    brutessh(serverToValidate);
+                    ns.brutessh(serverToValidate);
                 }
 
                 if (requiredPortAmountForServer > 1) {
-                    ftpcrack(serverToValidate);
+                    ns.ftpcrack(serverToValidate);
                 }
 
                 if (requiredPortAmountForServer > 2) {
-                    relaysmtp(serverToValidate);
+                    ns.relaysmtp(serverToValidate);
                 }
 
                 if (requiredPortAmountForServer > 3) {
-                    httpworm(serverToValidate);
+                    ns.httpworm(serverToValidate);
                 }
 
                 if (requiredPortAmountForServer > 4) {
-                    sqlinject(serverToValidate);
+                    ns.sqlinject(serverToValidate);
                 }
 
-                nuke(serverToValidate);
+                ns.nuke(serverToValidate);
             }
 
             validatedServers.push(serverToValidate);
 
-            var newTargets = scan(serverToValidate);
-            for (var x = 0; x < newTargets.length; x++) {
+            let newTargets = ns.scan(serverToValidate);
+            for (let x = 0; x < newTargets.length; x++) {
                 if (serversToHack.includes(newTargets[x])) {
                     continue;
                 }
@@ -77,17 +81,17 @@ function validate(args = []) {
         }
     }
 
-    write('validServers.txt', validatedServers, 'w');
-    write('invalidServers.txt', ignoredServers, 'w');
+    await ns.write('validServers.txt', validatedServers, 'w');
+    await ns.write('invalidServers.txt', ignoredServers, 'w');
 
-    var ownServers = getPurchasedServers();
-    var validatedServersWithoutOwn = [];
-    for (var v = 0; v < validatedServers.length; v++) {
+    let ownServers = ns.getPurchasedServers();
+    let validatedServersWithoutOwn = [];
+    for (let v = 0; v < validatedServers.length; v++) {
         if (ownServers.includes(validatedServers[v])) {
             continue;
         }
         validatedServersWithoutOwn.push(validatedServers[v]);
     }
 
-    write('validServersWithoutOwn.txt', validatedServersWithoutOwn, 'w');
+    await ns.write('validServersWithoutOwn.txt', validatedServersWithoutOwn, 'w');
 }
