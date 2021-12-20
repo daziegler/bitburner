@@ -1,23 +1,25 @@
-function buyServers(args = []) {
+/** @param {NS} ns **/
+export async function main(ns) {
+    let data = ns.flags([
+        ['num', 5],
+        ['name', 'hackserv-']
+    ]);
+
     // Default, we buy until we hit the limit
-    var purchasedServers = getPurchasedServers();
-    var numberOfServers = getPurchasedServerLimit() - purchasedServers.length;
-    if (args.length > 0 && args[0] < numberOfServers) {
-        numberOfServers = args[0];
+    let purchasedServers = ns.getPurchasedServers();
+    let maxServersToBuy = ns.getPurchasedServerLimit() - purchasedServers.length;
+    let numberOfServers = data.num;
+    if (numberOfServers > maxServersToBuy) {
+        numberOfServers = maxServersToBuy;
     }
 
-    var serverNameTemplate = 'hackserv-';
-    if (args.length > 1) {
-        serverNameTemplate = args[1];
-    }
+    const serverNameTemplate = data.name;
 
-    var player = getPlayer();
-
-    var maxAffordableRam = 0;
-    var purchasedServerMaxRam = getPurchasedServerMaxRam();
-    for (var r = 1; Math.pow(2, r) <= purchasedServerMaxRam; r++) {
-        var ram = Math.pow(2, r);
-        if ((getPurchasedServerCost(ram) * numberOfServers) < player.money) {
+    let maxAffordableRam = 0;
+    let purchasedServerMaxRam = ns.getPurchasedServerMaxRam();
+    for (let r = 1; Math.pow(2, r) <= purchasedServerMaxRam; r++) {
+        let ram = Math.pow(2, r);
+        if ((ns.getPurchasedServerCost(ram) * numberOfServers) < ns.getPlayer().money) {
             maxAffordableRam = ram;
             continue;
         }
@@ -26,24 +28,25 @@ function buyServers(args = []) {
     }
 
     if (maxAffordableRam === 0) {
-        exit();
+        ns.print('Can not afford to buy ANY server');
+        ns.exit();
     }
 
-    for (var i = 0; i < numberOfServers; i++) {
-        var newServerName = serverNameTemplate + i;
+    for (let i = 0; i < numberOfServers; i++) {
+        let newServerName = serverNameTemplate + i;
         if (purchasedServers.includes(newServerName)) {
             // If we already own the server, and it is better, than the best possible update, we buy a new one
             // If it would be worse, we upgrade the server instead
-            if (getServerMaxRam(newServerName) >= maxAffordableRam) {
+            if (ns.getServerMaxRam(newServerName) >= maxAffordableRam) {
                 numberOfServers++;
                 continue;
             } else {
-                killall(newServerName);
-                deleteServer(newServerName);
+                ns.killall(newServerName);
+                ns.deleteServer(newServerName);
             }
         }
-        purchaseServer(newServerName, maxAffordableRam);
+        ns.purchaseServer(newServerName, maxAffordableRam);
     }
 
-    spawn('validateServers.script');
+    ns.spawn('validate.ns');
 }
