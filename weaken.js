@@ -1,22 +1,14 @@
-// Function will weaken servers from the validServersWithoutOwn.txt if possible
-
 /** @param {NS} ns **/
 export async function main(ns) {
-    let serversToWeaken = await ns.read('validServersWithoutOwn.txt').split(',');
-    let serversToIgnore = [];
-    while (serversToIgnore.length < serversToWeaken.length) {
+    while (true) {
+        let serversToWeaken = [];
+        if (ns.args.length > 0) {
+            serversToWeaken = ns.args[0].split(',');
+        } else {
+            serversToWeaken = await ns.read('validServersWithoutOwn.txt').split(',');
+        }
         for (let i = 0; i < serversToWeaken.length; i++) {
-            let serverToWeaken = serversToWeaken[i];
-            if (serversToIgnore.includes(serverToWeaken)) {
-                continue;
-            }
-
-            if (ns.getServerSecurityLevel(serverToWeaken) > ns.getServerMinSecurityLevel(serverToWeaken)) {
-                await ns.weaken(serverToWeaken);
-                continue;
-            }
-
-            serversToIgnore.push(serverToWeaken);
+            await ns.weaken(serversToWeaken[i]);
         }
     }
 }

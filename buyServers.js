@@ -47,6 +47,4 @@ export async function main(ns) {
         }
         ns.purchaseServer(newServerName, maxAffordableRam);
     }
-
-    ns.spawn('validate.ns');
 }

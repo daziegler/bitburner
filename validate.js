@@ -1,18 +1,9 @@
-/*
-This script will scan for Servers that already have root access or can be hacked with the given Skillset.
-It will create three txt files:
-- validServers.txt contains all servers, that could be hacked and are below the skill level of the user
-- validServersWithoutOwn.txt as above, but excluding own servers
-- invalidServers.txt contains all servers, that are too high level, have to many required ports etc.
-*/
-
 /** @param {NS} ns **/
 export async function main(ns) {
     let serversToHack = ns.scan("home");
     let validatedServers = [];
     let ignoredServers = [];
-    let hackingLevel = ns.getHackingLevel();
-    let availablePortScripts = 2;
+    let availablePortScripts = await getAvailablePortScripts(ns)
 
     // Validation
     while ((ignoredServers.length + validatedServers.length) < serversToHack.length) {
@@ -32,7 +23,7 @@ export async function main(ns) {
                     ignoredServers.push(serverToValidate);
                     continue;
                 }
-                if (ns.getServerRequiredHackingLevel(serverToValidate) > hackingLevel) {
+                if (ns.getServerRequiredHackingLevel(serverToValidate) > ns.getHackingLevel()) {
                     ignoredServers.push(serverToValidate);
                     continue;
                 }
@@ -94,4 +85,29 @@ export async function main(ns) {
     }
 
     await ns.write('validServersWithoutOwn.txt', validatedServersWithoutOwn, 'w');
+
+    ns.spawn('setup.ns');
+}
+
+/** @param {NS} ns **/
+async function getAvailablePortScripts(ns) {
+    let availablePortScripts = 0;
+
+    if (ns.fileExists("BruteSSH.exe", "home")) {
+        availablePortScripts += 1;
+    }
+    if (ns.fileExists("FTPCrack.exe", "home")) {
+        availablePortScripts += 1;
+    }
+    if (ns.fileExists("RelaySMTP.exe", "home")) {
+        availablePortScripts += 1;
+    }
+    if (ns.fileExists("HTTPWorm.exe", "home")) {
+        availablePortScripts += 1;
+    }
+    if (ns.fileExists("SQLInject.exe", "home")) {
+        availablePortScripts += 1;
+    }
+
+    return availablePortScripts;
 }

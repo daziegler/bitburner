@@ -65,8 +65,8 @@ export async function main(ns) {
     }
 }
 
-/** 
- * @param {NS} ns 
+/**
+ * @param {NS} ns
  * @param {array} servers
  **/
 async function getOptimalMoneyServer(ns, servers) {
@@ -88,8 +88,8 @@ async function getOptimalMoneyServer(ns, servers) {
     return optimalServer;
 }
 
-/** 
- * @param {NS} ns 
+/**
+ * @param {NS} ns
  * @param {array} servers
  **/
 async function getOptimalTrainingServer(ns, servers) {
@@ -109,22 +109,31 @@ async function getOptimalTrainingServer(ns, servers) {
     return optimalServer;
 }
 
-/** 
- * @param {NS} ns 
+/**
+ * @param {NS} ns
  * @param {string} validServers
  **/
 async function selectBestScript(ns, target) {
     let moneyThresh = ns.getServerMaxMoney(target) * 0.8;
     let securityThresh = ns.getServerMinSecurityLevel(target) * 1.1;
-
     if (ns.getServerSecurityLevel(target) > securityThresh) {
-        ns.tprint('weakening');
+        ns.tprint(ns.sprintf(
+            'weakening %s (securityLevel %d with threshold %d)',
+            target,
+            ns.getServerSecurityLevel(target),
+            securityThresh
+        ));
         return 'weaken.ns';
     } else if (ns.getServerMoneyAvailable(target) < moneyThresh) {
-        ns.tprint('growing');
+        ns.tprint(ns.sprintf(
+            'growing %s (money available %d with threshold %d)',
+            target,
+            ns.getServerMoneyAvailable(target),
+            moneyThresh
+        ));
         return 'grow.ns';
     } else {
-        ns.tprint('hacking')
+        ns.tprint('hacking ' + target);
         return 'hack.ns';
     }
 }
@@ -200,8 +209,8 @@ async function validateServers(ns) {
     return validatedServers;
 }
 
-/** 
- * @param {NS} ns 
+/**
+ * @param {NS} ns
  * @param {array} validServers
  **/
 async function getServersToHack(ns, validServers) {
