@@ -241,6 +241,16 @@ async function validateServers(ns) {
                     ignoredServers.push(serverToValidate);
                     continue;
                 }
+
+                let newTargets = ns.scan(serverToValidate);
+                for (let x = 0; x < newTargets.length; x++) {
+                    if (serversToHack.includes(newTargets[x])) {
+                        continue;
+                    }
+
+                    serversToHack.push(newTargets[x]);
+                }
+
                 if (ns.getServerRequiredHackingLevel(serverToValidate) > ns.getHackingLevel()) {
                     ignoredServers.push(serverToValidate);
                     continue;
@@ -278,15 +288,6 @@ async function validateServers(ns) {
             }
 
             validatedServers.push(serverToValidate);
-
-            let newTargets = ns.scan(serverToValidate);
-            for (let x = 0; x < newTargets.length; x++) {
-                if (serversToHack.includes(newTargets[x])) {
-                    continue;
-                }
-
-                serversToHack.push(newTargets[x]);
-            }
         }
     }
 
@@ -346,10 +347,12 @@ async function disableLogs(ns) {
     ns.disableLog('scan');
     ns.disableLog('exec');
     ns.disableLog('killall');
+    ns.disableLog('getHackingLevel')
     ns.disableLog('getServerMinSecurityLevel');
     ns.disableLog('getServerSecurityLevel');
     ns.disableLog('getServerMaxMoney');
     ns.disableLog('getServerMoneyAvailable');
     ns.disableLog('getServerMaxRam');
     ns.disableLog('getServerUsedRam');
+    ns.disableLog('getServerRequiredHackingLevel')
 }
