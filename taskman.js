@@ -6,10 +6,11 @@ export async function main(ns) {
         'grow.ns',
     ];
 
-    let initialSetupDone = false;
+    await disableLogs(ns);
 
+    let initialSetupDone = false;
+    let refreshTime = -1;
     while (true) {
-        let refreshTime = -1;
         let serversToSetup = await validateServers(ns);
         let serversToHack = await getServersToHack(ns, serversToSetup);
 
@@ -34,13 +35,16 @@ export async function main(ns) {
             let moneyThresh = serverMaxMoney * 0.9;
             let securityThresh = serverMinSecurity * 1.1;
 
+            let weakenTime = ns.getWeakenTime(target);
+            let growTime = ns.getGrowTime(target);
+            let hackTime = ns.getHackTime(target);
+
             if (serverCurSecurity > securityThresh) {
                 let weakenedBy = 0;
                 let weakenThreads = 0;
                 while (weakenedBy < (serverCurSecurity - securityThresh)) {
                     weakenedBy = ns.weakenAnalyze(++weakenThreads);
                 }
-                let weakenTime = ns.getWeakenTime(target);
                 queue.push(await createJob(target, 'weaken.ns', weakenThreads, weakenTime));
 
                 continue;
@@ -48,16 +52,33 @@ export async function main(ns) {
 
             if (serverCurMoney < moneyThresh){
                 let growThreads = Math.ceil(ns.growthAnalyze(target, (moneyThresh - serverCurMoney)));
-                let growTime = ns.getGrowTime(target);
                 queue.push(await createJob(target, 'grow.ns', growThreads, growTime));
+
+                let securityRaise = ns.growthAnalyzeSecurity(growThreads);
+                if ((serverCurSecurity + securityRaise) > securityThresh) {
+                    let weakenedBy = 0;
+                    let weakenThreads = 0;
+                    while (weakenedBy < ((serverCurSecurity + securityRaise) - securityThresh)) {
+                        weakenedBy = ns.weakenAnalyze(++weakenThreads);
+                    }
+                    queue.push(await createJob(target, 'weaken.ns', weakenThreads, weakenTime));
+                }
 
                 continue;
             }
 
             let hackThreads = ns.hackAnalyzeThreads(target, serverCurMoney);
-            let hackTime = ns.getHackTime(target);
-
             queue.push(await createJob(target, 'hack.ns', hackThreads, hackTime));
+
+            let securityRaise = ns.hackAnalyzeSecurity(hackThreads);
+            if ((serverCurSecurity + securityRaise) > securityThresh) {
+                let weakenedBy = 0;
+                let weakenThreads = 0;
+                while (weakenedBy < ((serverCurSecurity + securityRaise) - securityThresh)) {
+                    weakenedBy = ns.weakenAnalyze(++weakenThreads);
+                }
+                queue.push(await createJob(target, 'weaken.ns', weakenThreads, weakenTime));
+            }
         }
 
         // If we have no queue, wait a minute, then restart the queueing process.
@@ -114,6 +135,11 @@ export async function main(ns) {
                         continue;
                     }
 
+                    // The same job should can not run on the same server
+                    if (ns.isRunning(jobInQueue.script, serverName, jobInQueue.target)) {
+                        continue;
+                    }
+
                     let threadsForJob = jobInQueue.threads;
                     if (maxThreadsForServer < threadsForJob) {
                         jobInQueue.threads -= maxThreadsForServer;
@@ -160,7 +186,7 @@ async function createJob(target, scriptName, threads, time) {
 }
 
 async function workJob(ns, server, job) {
-    ns.tprint(
+    ns.print(
         ns.sprintf(
             'Running script %s (%d threads) targetting %s on server %s',
             job.script,
@@ -313,4 +339,17 @@ async function getAvailablePortScripts(ns) {
     }
 
     return availablePortScripts;
+}
+
+async function disableLogs(ns) {
+    ns.disableLog('scp');
+    ns.disableLog('scan');
+    ns.disableLog('exec');
+    ns.disableLog('killall');
+    ns.disableLog('getServerMinSecurityLevel');
+    ns.disableLog('getServerSecurityLevel');
+    ns.disableLog('getServerMaxMoney');
+    ns.disableLog('getServerMoneyAvailable');
+    ns.disableLog('getServerMaxRam');
+    ns.disableLog('getServerUsedRam');
 }
