@@ -6,204 +6,261 @@ export async function main(ns) {
         'grow.ns',
     ];
 
-    await disableLogs(ns);
+    disableLogs(ns);
 
-    let initialSetupDone = false;
-    let refreshTime = -1;
     while (true) {
         let serversToSetup = await validateServers(ns);
         let serversToHack = await getServersToHack(ns, serversToSetup);
 
-        serversToSetup.sort(function(a, b) {
+        let targets = [];
+        for (let target of serversToHack) {
+            const targetServer = ns.getServer(target);
+
+            if (targetServer.moneyMax === 0) {
+                continue;
+            }
+
+            // We use a perfect Mock for all our calculations, since this is basically what we will have
+            const perfectServerToHack = getHackPerfectServer(targetServer);
+            const perfectServerToGrow = getGrowPerfectServer(targetServer);
+
+            const optimumHackThreads = getHackThreadsForServer(ns, perfectServerToHack);
+            const optimumGrowThreads = getGrowThreadsForServer(ns, perfectServerToGrow);
+
+            const hackSecurityIncrease = ns.hackAnalyzeSecurity(optimumHackThreads);
+            const growSecurityIncrease = ns.growthAnalyzeSecurity(optimumGrowThreads);
+
+            const minDifficultyForTarget = targetServer.minDifficulty;
+
+            const optimumWeakenThreadsAfterHack = getWeakenThreads(minDifficultyForTarget, minDifficultyForTarget + hackSecurityIncrease);
+            const optimumWeakenThreadsAfterGrow = getWeakenThreads(minDifficultyForTarget, minDifficultyForTarget + growSecurityIncrease);
+
+            const targetInfo = {
+                targetServer: perfectServerToHack,
+                hackThreads: optimumHackThreads,
+                growThreads: optimumGrowThreads,
+                weakenThreadsAfterHack: optimumWeakenThreadsAfterHack,
+                weakenThreadsAfterGrow: optimumWeakenThreadsAfterGrow
+            };
+
+            targets.push(targetInfo);
+        }
+
+        serversToSetup.sort(function (a, b) {
             return (ns.getServerMaxRam(b) - ns.getServerMaxRam(a));
         });
 
-        let queue = [];
-        for (let ht = 0; ht < serversToHack.length; ht++) {
-            let target = serversToHack[ht];
+        await optimizeTargetServersBeforeRun(ns, targets, serversToSetup);
+        await optimizeTargetServersBeforeRun(ns, targets, serversToSetup);
 
-            let serverMinSecurity = ns.getServerMinSecurityLevel(target);
-            let serverCurSecurity = ns.getServerSecurityLevel(target);
+        ns.exit();
 
-            let serverMaxMoney = ns.getServerMaxMoney(target);
-            let serverCurMoney = ns.getServerMoneyAvailable(target);
+        let runsBeforeReset = 100;
+        while (runsBeforeReset > 0) {
+            // We rebuild this queue every run
+            let queue = buildQueue(ns, targets);
 
-            if (serverMaxMoney === 0) {
-                continue;
-            }
-
-            let moneyThresh = serverMaxMoney * 0.9;
-            let securityThresh = serverMinSecurity * 1.1;
-
-            let weakenTime = ns.getWeakenTime(target);
-            let growTime = ns.getGrowTime(target);
-            let hackTime = ns.getHackTime(target);
-
-            if (serverCurSecurity > securityThresh) {
-                let weakenedBy = 0;
-                let weakenThreads = 0;
-                while (weakenedBy < (serverCurSecurity - securityThresh)) {
-                    weakenedBy = ns.weakenAnalyze(++weakenThreads);
-                }
-                queue.push(await createJob(target, 'weaken.ns', weakenThreads, weakenTime));
-
-                continue;
-            }
-
-            if (serverCurMoney < moneyThresh){
-                let growThreads = Math.ceil(ns.growthAnalyze(target, (moneyThresh - serverCurMoney)));
-                queue.push(await createJob(target, 'grow.ns', growThreads, growTime));
-
-                let securityRaise = ns.growthAnalyzeSecurity(growThreads);
-                if ((serverCurSecurity + securityRaise) > securityThresh) {
-                    let weakenedBy = 0;
-                    let weakenThreads = 0;
-                    while (weakenedBy < ((serverCurSecurity + securityRaise) - securityThresh)) {
-                        weakenedBy = ns.weakenAnalyze(++weakenThreads);
-                    }
-                    queue.push(await createJob(target, 'weaken.ns', weakenThreads, weakenTime));
-                }
-
-                continue;
-            }
-
-            let hackThreads = ns.hackAnalyzeThreads(target, serverCurMoney);
-            queue.push(await createJob(target, 'hack.ns', hackThreads, hackTime));
-
-            let securityRaise = ns.hackAnalyzeSecurity(hackThreads);
-            if ((serverCurSecurity + securityRaise) > securityThresh) {
-                let weakenedBy = 0;
-                let weakenThreads = 0;
-                while (weakenedBy < ((serverCurSecurity + securityRaise) - securityThresh)) {
-                    weakenedBy = ns.weakenAnalyze(++weakenThreads);
-                }
-                queue.push(await createJob(target, 'weaken.ns', weakenThreads, weakenTime));
-            }
-        }
-
-        // If we have no queue, wait a minute, then restart the queueing process.
-        if (queue.length === 0) {
-            ns.tprint('No tasks were queued. There might be something wrong!');
-            await ns.sleep(1000 * 60);
-            continue;
-        }
-
-        // Fastest job on lowest security server should train hacking the fastest
-        let trainingJob = await createJob(
-            'n00dles',
-            'weaken.ns',
-            Number.MAX_SAFE_INTEGER,
-            ns.getWeakenTime('n00dles')
-        );
-
-        let runs = 0;
-        while (serversToSetup.length > 0) {
-            if (runs === 3) {
-                // If we could not assign a task to a server the third time we tried, there is no server that could handle it.
-                break;
-            }
-
-            ++runs;
-
-            for (let i = 0; i < serversToSetup.length; i++) {
-                let serverName = serversToSetup[i];
-                await ns.scp(filesToCopy, serverName);
+            // Search servers that can be assigned to each job in the queue
+            for (let serverToSetup of serversToSetup) {
                 // For the first run, we kill all scripts
-                if (initialSetupDone === false) {
-                    ns.killall(serverName);
-                }
-                let maxRam = ns.getServerMaxRam(serverName);
-                let usedRam = ns.getServerUsedRam(serverName);
-                let availableRam = maxRam - usedRam;
-
-                // if we empty the queue but have servers left, train hacking
-                if (queue.length === 0) {
-                    queue.push(trainingJob);
+                if (runsBeforeReset === 100) {
+                    await ns.scp(filesToCopy, serverToSetup);
+                    ns.killall(serverToSetup);
                 }
 
-                // Assign queue items, where applicable
-                for (let qi = 0; qi < queue.length; qi++) {
-                    // We deepclone the job because we want to run and save different thread sizes
-                    let jobInQueue = queue[qi];
-                    let jobToRun = JSON.parse(JSON.stringify(jobInQueue));
+                const maxRam = ns.getServerMaxRam(serverToSetup);
+                for (let job of queue) {
+                    let usedRam = ns.getServerUsedRam(serverToSetup);
+                    let availableRam = maxRam - usedRam;
 
-                    let scriptRamUse = ns.getScriptRam(jobInQueue.script);
-                    let maxThreadsForServer = Math.floor(availableRam / scriptRamUse);
-
-                    // If the server can not run the job at least once, ignore it.
-                    if (maxThreadsForServer <= 0) {
-                        continue;
+                    // If the server can not run the next job, skip to the next server since the jobs MUST run in order
+                    if (availableRam < job.ramUse) {
+                        break;
                     }
 
-                    // The same job should can not run on the same server
-                    if (ns.isRunning(jobInQueue.script, serverName, jobInQueue.target)) {
-                        continue;
-                    }
-
-                    let threadsForJob = jobInQueue.threads;
-                    if (maxThreadsForServer < threadsForJob) {
-                        jobInQueue.threads -= maxThreadsForServer;
-                        jobToRun.threads = maxThreadsForServer;
-                    }
-
-                    await workJob(ns, serverName, jobToRun);
-
-                    if (maxThreadsForServer >= threadsForJob) {
-                        // remove job from queue
-                        queue.splice(qi, 1);
-                    }
-
-                    // set refreshTime to the shortest script time to reassign tasks
-                    if (refreshTime === -1 || jobToRun.runTime < refreshTime) {
-                        refreshTime = jobToRun.runTime;
-                    }
+                    job.host = serverToSetup;
                 }
             }
-            initialSetupDone = true;
-        }
 
-        // If no time is set, no script was run. Just wait and inform player
-        if (!refreshTime || refreshTime <= 0) {
-            ns.tprint('No script was run. Waiting.');
-            refreshTime = 1000 * 60;
-        }
+            queue = cleanupQueue(queue, 4);
+            for (let job of queue) {
+                await workJob(ns, job);
+            }
 
-        await ns.sleep(refreshTime);
+            runsBeforeReset--;
+        }
     }
 }
 
-async function createJob(target, scriptName, threads, time) {
-    // Add one second security buffer to time, then ceil it.
-    time += 1000;
-    let roundedTime = Math.ceil(time);
+/**
+ * @param {NS} ns
+ * @param {array} targets
+ * @param {Server[]} servers
+ **/
+export async function optimizeTargetServersBeforeRun(ns, targets, servers) {
+    let waitTime = 1000;
+    for (let target of targets) {
+        let targetName = target.targetServer.hostname;
+        let job = flatlineServerSecurity(ns, targetName);
+        if (job === null) {
+            continue;
+        }
+        for (let server of servers) {
+            let ramAvailable = ns.getServerMaxRam(server) - ns.getServerUsedRam(server)
+            if(ramAvailable > job.ramUse) {
+                job.host = server;
+            } else {
+                break;
+            }
+        }
+
+        if (job.waitTime > waitTime) {
+            waitTime = job.waitTime;
+        }
+
+        ns.exec(job.script, job.host, job.threads, job.target, 0);
+    }
+    await ns.sleep(waitTime);
+    waitTime = 1000;
+    for (let target of targets) {
+        let targetName = target.targetServer.hostname;
+        let job = maxoutServerMoney(ns, targetName);
+        if (job === null) {
+            continue;
+        }
+        for (let server of servers) {
+            let ramAvailable = ns.getServerMaxRam(server) - ns.getServerUsedRam(server)
+            if(ramAvailable > job.ramUse) {
+                job.host = server;
+            } else {
+                break;
+            }
+        }
+
+        if (job.waitTime > waitTime) {
+            waitTime = job.waitTime;
+        }
+
+        ns.exec(job.script, job.host, job.threads, job.target, 0);
+    }
+    await ns.sleep(waitTime);
+    waitTime = 1000;
+    for (let target of targets) {
+        let targetName = target.targetServer.hostname;
+        let job = flatlineServerSecurity(ns, targetName);
+        if (job === null) {
+            continue;
+        }
+        for (let server of servers) {
+            let ramAvailable = ns.getServerMaxRam(server) - ns.getServerUsedRam(server)
+            if(ramAvailable > job.ramUse) {
+                job.host = server;
+            } else {
+                break;
+            }
+        }
+
+        if (job.waitTime > waitTime) {
+            waitTime = job.waitTime;
+        }
+
+        ns.exec(job.script, job.host, job.threads, job.target, 0);
+    }
+    await ns.sleep(waitTime);
+}
+
+/**
+ * @param {NS} ns
+ * @param {array} targets
+ **/
+function buildQueue(ns, targets) {
+    let queue = [];
+    for (let target of targets) {
+        let hackTime = ns.formulas.hacking.hackTime(target.targetServer, ns.getPlayer());
+        let growTime = ns.formulas.hacking.growTime(target.targetServer, ns.getPlayer());
+        let weakenTime = ns.formulas.hacking.weakenTime(target.targetServer, ns.getPlayer());
+
+        queue.push(
+            createJob(ns, target, 'weaken.ns', target.weakenThreadsAfterHack, 100, 2)
+        );
+        queue.push(
+            createJob(ns, target, 'weaken.ns', target.weakenThreadsAfterGrow, (weakenTime - growTime - 100), 4)
+        )
+        queue.push(
+            createJob(ns, target, 'grow.ns', target.growThreads, (growTime - hackTime - 100), 3)
+        );
+        queue.push(
+            // TODO: We do not need the wait time here, and just wait at the end of the queue for maxHackTime. For now, this is good enough
+            createJob(ns, target, 'hack.ns', target.hackThreads, (hackTime + 100), 1)
+        );
+    }
+
+    return queue;
+}
+
+// Returns a queue that only contains jobs that have an assigned host and would fully cover the target
+function cleanupQueue(queue, maxBatchSize) {
+    let batchSize = maxBatchSize;
+    let batch = '';
+    for (let j = 0; j < queue.length; j++) {
+        let job = queue[j];
+        // Remove jobs, that could not be assigned a host
+        if (job.host === '') {
+            queue.splice(j, 1);
+            continue;
+        }
+
+        if (batch !== job.target) {
+            // This indicates that not enough ram for all 4 required jobs per server was available
+            if (batchSize < maxBatchSize) {
+                queue.splice(j, 1);
+                continue;
+            }
+
+            batch = job.target;
+            batchSize = 0;
+        }
+
+        batchSize++;
+    }
+
+    return queue;
+}
+
+export function createJob(ns, target, scriptName, threads, waitTime, order) {
+    let ramUse = threads * ns.getScriptRam(scriptName);
 
     return {
         target: target,
         script: scriptName,
         threads: threads,
-        runTime: roundedTime
+        waitTime: waitTime,
+        order: order,
+        ramUse: ramUse,
+        host: ''
     };
 }
 
-async function workJob(ns, server, job) {
+export async function workJob(ns, job) {
     ns.print(
         ns.sprintf(
             'Running script %s (%d threads) targetting %s on server %s',
             job.script,
             job.threads,
             job.target,
-            server
+            job.host
         )
     )
 
-    await ns.exec(job.script, server, job.threads, job.target);
+    ns.exec(job.script, job.host, job.threads, job.target, job.order);
+    await ns.sleep(job.waitTime);
 }
 
 /**
  * @param {NS} ns
  * @param {array} servers
  **/
-async function getOptimalServer(ns, servers) {
+export async function getOptimalServer(ns, servers) {
     let optimalServer = '';
     let optimalVal = 0;
     let currVal;
@@ -223,11 +280,11 @@ async function getOptimalServer(ns, servers) {
 }
 
 /** @param {NS} ns **/
-async function validateServers(ns) {
+export async function validateServers(ns) {
     let serversToHack = ns.scan('home');
     let validatedServers = [];
     let ignoredServers = [];
-    let availablePortScripts = await getAvailablePortScripts(ns)
+    let availablePortScripts = getAvailablePortScripts(ns)
 
     while ((ignoredServers.length + validatedServers.length) < serversToHack.length) {
         for (let v = 0; v < serversToHack.length; v++) {
@@ -298,7 +355,7 @@ async function validateServers(ns) {
  * @param {NS} ns
  * @param {array} validServers
  **/
-async function getServersToHack(ns, validServers) {
+export async function getServersToHack(ns, validServers) {
     let ownServers = ns.getPurchasedServers();
     let validatedServersWithoutOwn = [];
     for (let v = 0; v < validServers.length; v++) {
@@ -319,8 +376,109 @@ async function getServersToHack(ns, validServers) {
     return orderedServersToHack;
 }
 
+/**
+ * @param {NS} ns
+ * @param {Server} server
+ */
+export function getHackThreadsForServer(ns, server) {
+    let desiredHackPercent = 0.5;
+    let hackPercentPerThread = ns.formulas.hacking.hackPercent(server, ns.getPlayer());
+    if (hackPercentPerThread === 0) {
+        return 1;
+    }
+
+    return Math.ceil(desiredHackPercent / hackPercentPerThread);
+}
+
+/**
+ * @param {NS} ns
+ * @param {Server} server
+ */
+export function getGrowThreadsForServer(ns, server) {
+    let growThreads = 0;
+    let growthPercent = 0;
+    let desiredGrowthPercent = 100;
+    while (growthPercent < desiredGrowthPercent) {
+        growThreads++;
+        growthPercent = ns.formulas.hacking.growPercent(server, growThreads, ns.getPlayer());
+    }
+
+    return growThreads;
+}
+
+/**
+ * @param {Number} minDifficulty
+ * @param {Number} hackDifficulty
+ */
+export function getWeakenThreads(minDifficulty, hackDifficulty) {
+    let weakenPerThread = 0.05;
+    let toWeakenBy = hackDifficulty - minDifficulty;
+    if (toWeakenBy <= 0) {
+        return 1;
+    }
+
+    return Math.ceil(toWeakenBy / weakenPerThread);
+}
+
+// A server is perfect for hacking if it has 0 security and 100% of its max money
+function getHackPerfectServer(server) {
+    let optimalServerDeepClone = JSON.parse(JSON.stringify(server));;
+    optimalServerDeepClone.moneyAvailable = server.maxMoney;
+    optimalServerDeepClone.hackDifficulty = optimalServerDeepClone.minDifficulty;
+
+    return optimalServerDeepClone;
+}
+
+// A server is perfect for growth if it has 0 security and 50% of its max money
+function getGrowPerfectServer(server) {
+    let optimalServerDeepClone = JSON.parse(JSON.stringify(server));
+    optimalServerDeepClone.moneyAvailable = optimalServerDeepClone.maxMonex * 0.5;
+    optimalServerDeepClone.hackDifficulty = optimalServerDeepClone.minDifficulty;
+
+    return optimalServerDeepClone;
+}
+
+/**
+ * @param {NS} ns
+ * @param {string} target
+ */
+function maxoutServerMoney(ns, target) {
+    let serverMaxMoney = ns.getServerMaxMoney(target);
+    if (ns.getServerMoneyAvailable(target) === serverMaxMoney) {
+        return null;
+    }
+
+    let growFactor = serverMaxMoney - 1;
+    if (ns.getServerMoneyAvailable(target) > 0) {
+        growFactor = serverMaxMoney / ns.getServerMoneyAvailable(target);
+    }
+
+    let growThreads = Math.ceil(ns.growthAnalyze(target, growFactor));
+    let growTime = ns.formulas.hacking.growTime(ns.getServer(target), ns.getPlayer());
+
+    growTime = Math.ceil(growTime + 300);
+
+    return createJob(ns, target, 'grow.ns', growThreads, growTime, 0);
+}
+
+/**
+ * @param {NS} ns
+ * @param {string} target
+ */
+function flatlineServerSecurity(ns, target) {
+    let serverMinSecurity = ns.getServerMinSecurityLevel(target);
+    if (ns.getServerSecurityLevel(target) === serverMinSecurity) {
+        return null;
+    }
+    let weakenThreads = getWeakenThreads(serverMinSecurity, ns.getServerSecurityLevel(target));
+    let weakenTime = ns.formulas.hacking.weakenTime(ns.getServer(target), ns.getPlayer());
+    weakenTime = Math.ceil(weakenTime + 300);
+
+    return createJob(ns, target, 'weaken.ns', weakenThreads, weakenTime, 0);
+}
+
 /** @param {NS} ns **/
-async function getAvailablePortScripts(ns) {
+export function getAvailablePortScripts(ns) {
     let availablePortScripts = 0;
 
     if (ns.fileExists("BruteSSH.exe", "home")) {
@@ -342,7 +500,8 @@ async function getAvailablePortScripts(ns) {
     return availablePortScripts;
 }
 
-async function disableLogs(ns) {
+/** @param {NS} ns */
+function disableLogs(ns) {
     ns.disableLog('scp');
     ns.disableLog('scan');
     ns.disableLog('exec');
