@@ -53,36 +53,64 @@ export async function main(ns) {
         await optimizeTargetServersBeforeRun(ns, targets, serversToSetup);
 
         let runsBeforeReset = 100;
+        let servers = [];
+        for (let server of serversToSetup) {
+            servers.push(ns.getServer(server));
+        }
+
         while (runsBeforeReset > 0) {
             // We rebuild this queue every run
             let queue = buildQueue(ns, targets);
-
-            // Search servers that can be assigned to each job in the queue
-            for (let serverToSetup of serversToSetup) {
-                // For the first run, we kill all scripts
-                if (runsBeforeReset === 100) {
-                    await ns.scp(filesToCopy, serverToSetup);
-                    ns.killall(serverToSetup);
+            for (let b = 0; b < queue.length; b++) {
+                let batch = queue[b];
+                let batchRamUse = 0;
+                for (let job of batch) {
+                    batchRamUse += job.ramUse;
                 }
+                // Search servers that can be assigned to each job in the queue
+                let serverForJob = null;
+                for (let serverToSetup of servers) {
+                    // For the first run, we kill all scripts
+                    if (runsBeforeReset === 100) {
+                        await ns.scp(filesToCopy, serverToSetup.hostname);
+                    }
 
-                const maxRam = ns.getServerMaxRam(serverToSetup);
-                for (let job of queue) {
-                    let usedRam = ns.getServerUsedRam(serverToSetup);
-                    let availableRam = maxRam - usedRam;
-
-                    // If the server can not run the next job, skip to the next server since the jobs MUST run in order
-                    if (availableRam < job.ramUse) {
+                    // Find smallest possible server for job
+                    let availableRam = (serverToSetup.maxRam - serverToSetup.ramUsed);
+                    if (availableRam >= batchRamUse) {
+                        serverForJob = serverToSetup;
+                        continue;
+                    }
+                    // If no server is found we remove the batch because we do not have the capacity for it
+                    if (serverForJob === null) {
                         break;
                     }
 
-                    job.host = serverToSetup;
+                    serverForJob.ramUsed += batchRamUse;
+
+                    let encodedBatch = JSON.stringify(batch);
+                    let scriptsRunning = ns.ps();
+                    let alreadyRunning = false;
+                    for (let script of scriptsRunning) {
+                        if (script.filename !== 'taskRunner.ns') {
+                            continue;
+                        }
+
+                        if (script.args[0] !== encodedBatch) {
+                            continue;
+                        }
+
+                        alreadyRunning = true;
+                    }
+                    if (alreadyRunning) {
+                        continue;
+                    }
+                    ns.run('taskRunner.ns', 1, encodedBatch, serverForJob.hostname);
+                    break;
                 }
             }
 
-            queue = cleanupQueue(queue, 4);
-            for (let job of queue) {
-                await workJob(ns, job);
-            }
+            await ns.sleep(1000 * 60);
 
             runsBeforeReset--;
         }
@@ -171,54 +199,28 @@ export async function optimizeTargetServersBeforeRun(ns, targets, servers) {
  * @param {array} targets
  **/
 function buildQueue(ns, targets) {
+    let batch = [];
     let queue = [];
     for (let target of targets) {
         let hackTime = ns.formulas.hacking.hackTime(target.targetServer, ns.getPlayer());
         let growTime = ns.formulas.hacking.growTime(target.targetServer, ns.getPlayer());
         let weakenTime = ns.formulas.hacking.weakenTime(target.targetServer, ns.getPlayer());
 
-        queue.push(
+        batch.push(
             createJob(ns, target.targetServer.hostname, 'weaken.ns', target.weakenThreadsAfterHack, 100, 2)
         );
-        queue.push(
+        batch.push(
             createJob(ns, target.targetServer.hostname, 'weaken.ns', target.weakenThreadsAfterGrow, (weakenTime - growTime - 100), 4)
         )
-        queue.push(
+        batch.push(
             createJob(ns, target.targetServer.hostname, 'grow.ns', target.growThreads, (growTime - hackTime - 100), 3)
         );
-        queue.push(
+        batch.push(
             // TODO: We do not need the wait time here, and just wait at the end of the queue for maxHackTime. For now, this is good enough
             createJob(ns, target.targetServer.hostname, 'hack.ns', target.hackThreads, (hackTime + 100), 1)
         );
-    }
-
-    return queue;
-}
-
-// Returns a queue that only contains jobs that have an assigned host and would fully cover the target
-function cleanupQueue(queue, maxBatchSize) {
-    let batchSize = maxBatchSize;
-    let batch = '';
-    for (let j = 0; j < queue.length; j++) {
-        let job = queue[j];
-        // Remove jobs, that could not be assigned a host
-        if (job.host === '') {
-            queue.splice(j, 1);
-            continue;
-        }
-
-        if (batch !== job.target) {
-            // This indicates that not enough ram for all 4 required jobs per server was available
-            if (batchSize < maxBatchSize) {
-                queue.splice(j, 1);
-                continue;
-            }
-
-            batch = job.target;
-            batchSize = 0;
-        }
-
-        batchSize++;
+        queue.push(batch);
+        batch = [];
     }
 
     return queue;
@@ -233,24 +235,8 @@ export function createJob(ns, target, scriptName, threads, waitTime, order) {
         threads: threads,
         waitTime: waitTime,
         order: order,
-        ramUse: ramUse,
-        host: ''
+        ramUse: ramUse
     };
-}
-
-export async function workJob(ns, job) {
-    ns.print(
-        ns.sprintf(
-            'Running script %s (%d threads) targetting %s on server %s',
-            job.script,
-            job.threads,
-            job.target,
-            job.host
-        )
-    )
-
-    ns.exec(job.script, job.host, job.threads, job.target, job.order);
-    await ns.sleep(job.waitTime);
 }
 
 /**
