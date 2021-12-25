@@ -178,17 +178,17 @@ function buildQueue(ns, targets) {
         let weakenTime = ns.formulas.hacking.weakenTime(target.targetServer, ns.getPlayer());
 
         queue.push(
-            createJob(ns, target, 'weaken.ns', target.weakenThreadsAfterHack, 100, 2)
+            createJob(ns, target.targetServer.hostname, 'weaken.ns', target.weakenThreadsAfterHack, 100, 2)
         );
         queue.push(
-            createJob(ns, target, 'weaken.ns', target.weakenThreadsAfterGrow, (weakenTime - growTime - 100), 4)
+            createJob(ns, target.targetServer.hostname, 'weaken.ns', target.weakenThreadsAfterGrow, (weakenTime - growTime - 100), 4)
         )
         queue.push(
-            createJob(ns, target, 'grow.ns', target.growThreads, (growTime - hackTime - 100), 3)
+            createJob(ns, target.targetServer.hostname, 'grow.ns', target.growThreads, (growTime - hackTime - 100), 3)
         );
         queue.push(
             // TODO: We do not need the wait time here, and just wait at the end of the queue for maxHackTime. For now, this is good enough
-            createJob(ns, target, 'hack.ns', target.hackThreads, (hackTime + 100), 1)
+            createJob(ns, target.targetServer.hostname, 'hack.ns', target.hackThreads, (hackTime + 100), 1)
         );
     }
 
