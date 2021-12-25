@@ -51,9 +51,6 @@ export async function main(ns) {
         });
 
         await optimizeTargetServersBeforeRun(ns, targets, serversToSetup);
-        await optimizeTargetServersBeforeRun(ns, targets, serversToSetup);
-
-        ns.exit();
 
         let runsBeforeReset = 100;
         while (runsBeforeReset > 0) {
