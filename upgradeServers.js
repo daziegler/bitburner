@@ -6,7 +6,7 @@ export async function main(ns) {
     let ownedServersWithLessRam = 0;
     for (let r = 1; Math.pow(2, r) <= purchasedServerMaxRam; r++) {
         let ram = Math.pow(2, r);
-
+        ownedServersWithLessRam = 0;
         for (let s = 0; s < ownedServers.length; s++) {
             if (ns.getServerMaxRam(ownedServers[s]) < ram) {
                 ownedServersWithLessRam++;
@@ -15,12 +15,10 @@ export async function main(ns) {
         let upgradeCostForOwnedServers = (ns.getPurchasedServerCost(ram) * ownedServersWithLessRam);
         if (upgradeCostForOwnedServers < ns.getPlayer().money) {
             maxAffordableRam = ram;
-            ownedServersWithLessRam = 0;
             continue;
         }
 
         ns.tprint(
-
             ns.sprintf('Can not afford upgrade %d servers to %d GB ram. That would require $%d.', ownedServersWithLessRam, ram, upgradeCostForOwnedServers)
         );
         break;
