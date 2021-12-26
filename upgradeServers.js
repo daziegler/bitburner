@@ -53,7 +53,6 @@ export async function main(ns) {
         for (let s = 0; s < stillRunning.length; s++) {
             let server = stillRunning[s];
             if (ns.ps(server).length > 0) {
-                stillRunning.push(server);
                 continue;
             }
             ns.deleteServer(server);
