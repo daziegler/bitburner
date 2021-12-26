@@ -38,9 +38,6 @@ async function workBatch(ns, batch, server) {
         await ns.sleep(job.waitTime);
     }
 
-    ns.tprint(lastJob);
-    ns.tprint(server);
-
     // wait until the final script stops running
     while(ns.isRunning(lastJob.script, server, lastJob.target, lastJob.order)) {
         await ns.sleep(1000 * 10);
