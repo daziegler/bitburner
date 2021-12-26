@@ -7,7 +7,7 @@ export async function main(ns) {
     let batch = JSON.parse(ns.args[0]);
     let server = ns.args[1]
 
-    await workBatch(ns, batch, server, waitUntilDone);
+    await workBatch(ns, batch, server);
 }
 
 /**
