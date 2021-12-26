@@ -47,72 +47,77 @@ export async function main(ns) {
         }
 
         serversToSetup.sort(function (a, b) {
-            return (ns.getServerMaxRam(b) - ns.getServerMaxRam(a));
+            return (ns.getServerMaxRam(a) - ns.getServerMaxRam(b));
         });
+
+        let servers = [];
+        for (let serverName of serversToSetup) {
+            servers.push({
+                'hostname': serverName,
+                'ramMax': ns.getServerMaxRam(serverName),
+                'ramReserved': 0,
+                'tasks': [],
+            })
+
+            await ns.scp(filesToCopy, serverName);
+        }
 
         await optimizeTargetServersBeforeRun(ns, targets, serversToSetup);
 
-        let runsBeforeReset = 100;
-        let servers = [];
-        for (let server of serversToSetup) {
-            servers.push(ns.getServer(server));
-        }
-
-        while (runsBeforeReset > 0) {
+        while (true) {
             // We rebuild this queue every run
             let queue = buildQueue(ns, targets);
-            for (let b = 0; b < queue.length; b++) {
-                let batch = queue[b];
+            for (let batch of queue) {
                 let batchRamUse = 0;
                 for (let job of batch) {
                     batchRamUse += job.ramUse;
                 }
                 // Search servers that can be assigned to each job in the queue
-                let serverForJob = null;
                 for (let serverToSetup of servers) {
-                    // For the first run, we kill all scripts
-                    if (runsBeforeReset === 100) {
-                        await ns.scp(filesToCopy, serverToSetup.hostname);
-                    }
-
                     // Find smallest possible server for job
-                    let availableRam = (serverToSetup.maxRam - serverToSetup.ramUsed);
-                    if (availableRam >= batchRamUse) {
-                        serverForJob = serverToSetup;
+                    let availableRam = (serverToSetup.ramMax - serverToSetup.ramReserved);
+                    if (availableRam < batchRamUse) {
                         continue;
                     }
-                    // If no server is found we remove the batch because we do not have the capacity for it
-                    if (serverForJob === null) {
-                        break;
-                    }
-
-                    serverForJob.ramUsed += batchRamUse;
-
                     let encodedBatch = JSON.stringify(batch);
-                    let scriptsRunning = ns.ps();
-                    let alreadyRunning = false;
-                    for (let script of scriptsRunning) {
-                        if (script.filename !== 'taskRunner.ns') {
-                            continue;
-                        }
-
-                        if (script.args[0] !== encodedBatch) {
-                            continue;
-                        }
-
-                        alreadyRunning = true;
-                    }
-                    if (alreadyRunning) {
+                    if (ns.isRunning('taskRunner.ns', 'home', encodedBatch, serverToSetup.hostname)) {
                         continue;
                     }
-                    ns.run('taskRunner.ns', 1, encodedBatch, serverForJob.hostname);
+                    if ((ns.getServerMaxRam('home') - ns.getServerUsedRam('home')) < ns.getScriptRam('taskRunner.ns', 'home')) {
+                        continue;
+                    }
+                    serverToSetup.ramReserved += batchRamUse;
+                    let pid = ns.run('taskRunner.ns', 1, encodedBatch, serverToSetup.hostname);
+                    serverToSetup.tasks.push({ pid: pid, ramReserved: batchRamUse });
                     break;
                 }
             }
 
-            await ns.sleep(1000 * 60);
+            await ns.sleep(1000 * 10);
 
-            runsBeforeReset--;
+            // Adjust reserved ram for scripts that stopped running
+
+            let runningScripts = ns.ps('home');
+            // array_column
+            let runningScriptPids = runningScripts.map(function (value, index) {
+                return value['pid'];
+            })
+            for (let server of servers) {
+                if (server.tasks.length === 0) {
+                    continue;
+                }
+                let stillRunningTasks = [];
+                for (let t = 0; t < server.tasks.length; t++) {
+                    let task = server.tasks[t];
+                    if (runningScriptPids.includes(task.pid)) {
+                        stillRunningTasks.push(task);
+                        continue;
+                    }
+
+                    server.ramReserved -= task.ramReserved;
+                }
+                server.tasks = stillRunningTasks;
+            }
         }
     }
 }
@@ -120,78 +125,91 @@ export async function main(ns) {
 /**
  * @param {NS} ns
  * @param {array} targets
- * @param {Server[]} servers
+ * @param {array} servers
  **/
 export async function optimizeTargetServersBeforeRun(ns, targets, servers) {
-    let waitTime = 1000;
-    for (let target of targets) {
-        let targetName = target.targetServer.hostname;
-        let job = flatlineServerSecurity(ns, targetName);
-        if (job === null) {
-            continue;
-        }
-        for (let server of servers) {
-            let ramAvailable = ns.getServerMaxRam(server) - ns.getServerUsedRam(server)
-            if(ramAvailable > job.ramUse) {
-                job.host = server;
-            } else {
+    let optimQueue = buildQueueForOptimization(ns, targets);
+    let batchesRun = [];
+    while (batchesRun.length < optimQueue.length) {
+        for (let batch of optimQueue) {
+            let batchRamUse = 0;
+            for (let job of batch) {
+                batchRamUse += job.ramUse;
+            }
+
+            // Search servers that can be assigned to each job in the queue
+            for (let serverToSetup of servers) {
+                // Find smallest possible server for job
+                let availableRam = ns.getServerMaxRam(serverToSetup) - ns.getServerUsedRam(serverToSetup);
+                if (availableRam < batchRamUse) {
+                    continue;
+                }
+                let encodedBatch = JSON.stringify(batch);
+                if (batchesRun.includes(encodedBatch)) {
+                    continue;
+                }
+                if ((ns.getServerMaxRam('home') - ns.getServerUsedRam('home')) < ns.getScriptRam('taskRunner.ns', 'home')) {
+                    continue;
+                }
+                batchesRun.push(encodedBatch);
+                ns.run('taskRunner.ns', 1, encodedBatch, serverToSetup);
                 break;
             }
         }
-
-        if (job.waitTime > waitTime) {
-            waitTime = job.waitTime;
-        }
-
-        ns.exec(job.script, job.host, job.threads, job.target, 0);
+        await ns.sleep(1000 * 10);
     }
-    await ns.sleep(waitTime);
-    waitTime = 1000;
+
+    while (ns.scriptRunning('taskRunner.ns', 'home')) {
+        await ns.sleep(1000 * 10);
+    }
+}
+
+/**
+ * @param {NS} ns
+ * @param {array} targets
+ **/
+function buildQueueForOptimization(ns, targets) {
+    let batch = [];
+    let queue = [];
     for (let target of targets) {
-        let targetName = target.targetServer.hostname;
-        let job = maxoutServerMoney(ns, targetName);
-        if (job === null) {
-            continue;
-        }
-        for (let server of servers) {
-            let ramAvailable = ns.getServerMaxRam(server) - ns.getServerUsedRam(server)
-            if(ramAvailable > job.ramUse) {
-                job.host = server;
-            } else {
-                break;
+        let targetServer = target.targetServer;
+
+        let weakenThreadsBeforeGrow = getWeakenThreads(targetServer.minDifficulty, targetServer.hackDifficulty);
+        let weakenTime = ns.getWeakenTime(targetServer.hostname);
+
+        batch.push(
+            createJob(ns, targetServer.hostname, 'weaken.ns', weakenThreadsBeforeGrow, 100, 1)
+        );
+
+        let maxMoney = ns.getServerMaxMoney(targetServer.hostname);
+        let availableMoney = ns.getServerMoneyAvailable(targetServer.hostname);
+
+        // Only grow and reweaken if we have need for that
+        if (maxMoney > 0 && maxMoney !== availableMoney) {
+            if (availableMoney === 0) {
+                availableMoney = 1;
             }
-        }
 
-        if (job.waitTime > waitTime) {
-            waitTime = job.waitTime;
-        }
+            let missingMoney = maxMoney - availableMoney;
+            let growFactor = (missingMoney / (availableMoney / 100)) / 100;
+            let growThreads = Math.ceil(ns.growthAnalyze(targetServer.hostname, growFactor));
+            let growTime = ns.getGrowTime(targetServer.hostname);
 
-        ns.exec(job.script, job.host, job.threads, job.target, 0);
+            let weakenThreadsAfterGrow = getWeakenThreads(targetServer.minDifficulty, targetServer.hackDifficulty);
+
+            batch.push(
+                createJob(ns, targetServer.hostname, 'weaken.ns', weakenThreadsAfterGrow, (weakenTime - growTime - 100), 3)
+            );
+
+            batch.push(
+                createJob(ns, targetServer.hostname, 'grow.ns', growThreads, (growTime - 100), 2)
+            );
+        }
+        queue.push(batch);
+        batch = [];
     }
-    await ns.sleep(waitTime);
-    waitTime = 1000;
-    for (let target of targets) {
-        let targetName = target.targetServer.hostname;
-        let job = flatlineServerSecurity(ns, targetName);
-        if (job === null) {
-            continue;
-        }
-        for (let server of servers) {
-            let ramAvailable = ns.getServerMaxRam(server) - ns.getServerUsedRam(server)
-            if(ramAvailable > job.ramUse) {
-                job.host = server;
-            } else {
-                break;
-            }
-        }
 
-        if (job.waitTime > waitTime) {
-            waitTime = job.waitTime;
-        }
-
-        ns.exec(job.script, job.host, job.threads, job.target, 0);
-    }
-    await ns.sleep(waitTime);
+    return queue;
 }
 
 /**
@@ -415,49 +433,10 @@ function getHackPerfectServer(server) {
 // A server is perfect for growth if it has 0 security and 50% of its max money
 function getGrowPerfectServer(server) {
     let optimalServerDeepClone = JSON.parse(JSON.stringify(server));
-    optimalServerDeepClone.moneyAvailable = optimalServerDeepClone.maxMonex * 0.5;
+    optimalServerDeepClone.moneyAvailable = optimalServerDeepClone.maxMoney * 0.5;
     optimalServerDeepClone.hackDifficulty = optimalServerDeepClone.minDifficulty;
 
     return optimalServerDeepClone;
-}
-
-/**
- * @param {NS} ns
- * @param {string} target
- */
-function maxoutServerMoney(ns, target) {
-    let serverMaxMoney = ns.getServerMaxMoney(target);
-    if (ns.getServerMoneyAvailable(target) === serverMaxMoney) {
-        return null;
-    }
-
-    let growFactor = serverMaxMoney - 1;
-    if (ns.getServerMoneyAvailable(target) > 0) {
-        growFactor = serverMaxMoney / ns.getServerMoneyAvailable(target);
-    }
-
-    let growThreads = Math.ceil(ns.growthAnalyze(target, growFactor));
-    let growTime = ns.formulas.hacking.growTime(ns.getServer(target), ns.getPlayer());
-
-    growTime = Math.ceil(growTime + 300);
-
-    return createJob(ns, target, 'grow.ns', growThreads, growTime, 0);
-}
-
-/**
- * @param {NS} ns
- * @param {string} target
- */
-function flatlineServerSecurity(ns, target) {
-    let serverMinSecurity = ns.getServerMinSecurityLevel(target);
-    if (ns.getServerSecurityLevel(target) === serverMinSecurity) {
-        return null;
-    }
-    let weakenThreads = getWeakenThreads(serverMinSecurity, ns.getServerSecurityLevel(target));
-    let weakenTime = ns.formulas.hacking.weakenTime(ns.getServer(target), ns.getPlayer());
-    weakenTime = Math.ceil(weakenTime + 300);
-
-    return createJob(ns, target, 'weaken.ns', weakenThreads, weakenTime, 0);
 }
 
 /** @param {NS} ns **/
