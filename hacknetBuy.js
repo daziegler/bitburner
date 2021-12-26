@@ -38,7 +38,7 @@ export async function main(ns) {
     for (let i = nextNodeIndex; i < lastNodeIndex; i++) {
         let newNodeCost = ns.hacknet.getPurchaseNodeCost();
         while (ns.getPlayer().money < newNodeCost) {
-            ns.print(sprintf(
+            ns.print(ns.sprintf(
                 'Need $%d to buy next node. Have $%d',
                 newNodeCost,
                 ns.getPlayer().money
@@ -51,7 +51,7 @@ export async function main(ns) {
             while (ns.hacknet.getNodeStats(newNode).level < level) {
                 let lvlCost = ns.hacknet.getLevelUpgradeCost(newNode, 1);
                 while (ns.getPlayer().money < lvlCost) {
-                    ns.print(sprintf(
+                    ns.print(ns.sprintf(
                         'Need $%d for the upgrade of node %d from lvl %d. Have $%d',
                         lvlCost,
                         newNode,
@@ -68,7 +68,7 @@ export async function main(ns) {
             while (ns.hacknet.getNodeStats(newNode).ram < ram) {
                 let ramCost = ns.hacknet.getRamUpgradeCost(newNode, 1);
                 while (ns.getPlayer().money < ramCost) {
-                    ns.print(sprintf(
+                    ns.print(ns.sprintf(
                         'Need $%d for the upgrade of node %d from ram %d. Have $%d',
                         ramCost,
                         newNode,
@@ -85,7 +85,7 @@ export async function main(ns) {
             while (ns.hacknet.getNodeStats(newNode).cores < core) {
                 let coreCost = ns.hacknet.getCoreUpgradeCost(newNode, 1);
                 while (ns.getPlayer().money < coreCost) {
-                    ns.print(sprintf(
+                    ns.print(ns.sprintf(
                         'Need $%d for the upgrade of node %d from core %d. Have $%d',
                         coreCost,
                         newNode,
