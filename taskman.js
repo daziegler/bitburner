@@ -172,7 +172,7 @@ function buildQueueForOptimization(ns, targets) {
     let batch = [];
     let queue = [];
     for (let target of targets) {
-        let targetServer = target.targetServer;
+        let targetServer = ns.getServer(target.targetServer.hostname);
 
         let weakenThreadsBeforeGrow = getWeakenThreads(targetServer.minDifficulty, targetServer.hackDifficulty);
         let weakenTime = ns.getWeakenTime(targetServer.hostname);
@@ -191,18 +191,23 @@ function buildQueueForOptimization(ns, targets) {
             }
 
             let missingMoney = maxMoney - availableMoney;
-            let growFactor = (missingMoney / (availableMoney / 100)) / 100;
+            let growFactor = Math.ceil((missingMoney / (availableMoney / 100)) / 100);
             let growThreads = Math.ceil(ns.growthAnalyze(targetServer.hostname, growFactor));
             let growTime = ns.getGrowTime(targetServer.hostname);
 
-            let weakenThreadsAfterGrow = getWeakenThreads(targetServer.minDifficulty, targetServer.hackDifficulty);
+            if (growThreads < 1) {
+                growThreads = 1;
+            }
+
+            let growSecurityIncrease = ns.growthAnalyzeSecurity(growThreads);
+            let weakenThreadsAfterGrow = getWeakenThreads(targetServer.minDifficulty, (targetServer.hackDifficulty + growSecurityIncrease));
 
             batch.push(
                 createJob(ns, targetServer.hostname, 'weaken.ns', weakenThreadsAfterGrow, (weakenTime - growTime - 100), 3)
             );
 
             batch.push(
-                createJob(ns, targetServer.hostname, 'grow.ns', growThreads, (growTime - 100), 2)
+                createJob(ns, targetServer.hostname, 'grow.ns', growThreads, 100, 2)
             );
         }
         queue.push(batch);
