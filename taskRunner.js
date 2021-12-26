@@ -4,6 +4,9 @@ export async function main(ns) {
         return;
     }
 
+    ns.disableLog('sleep');
+
+
     let batch = JSON.parse(ns.args[0]);
     let server = ns.args[1]
 
@@ -16,14 +19,8 @@ export async function main(ns) {
  * @param {string} server
  **/
 async function workBatch(ns, batch, server) {
-    let order = 0;
-    let lastJob = null;
+    let pids = [];
     for (let job of batch) {
-        if (job.order >= order) {
-            lastJob = job;
-            order = job.order;
-        }
-
         ns.print(
             ns.sprintf(
                 'Running script %s (%d threads) targetting %s on server %s',
@@ -34,12 +31,33 @@ async function workBatch(ns, batch, server) {
             )
         )
 
-        ns.exec(job.script, server, job.threads, job.target, job.order);
+        let pid = ns.exec(job.script, server, job.threads, job.target, job.order);
+        if (pid === 0) {
+            ns.alert(ns.sprintf(
+                'Script %s with target %s (called on %s) did not start!',
+                job.script,
+                job.target,
+                server
+            ));
+        } else {
+            pids.push(pid);
+        }
+
         await ns.sleep(job.waitTime);
     }
 
-    // wait until the final script stops running
-    while(ns.isRunning(lastJob.script, server, lastJob.target, lastJob.order)) {
+    let scriptsRunning = true;
+    while (scriptsRunning) {
+        let runningScripts = ns.ps(server)
+        let runningScriptPids = runningScripts.map(function (value, index) {
+            return value['pid'];
+        });
+
+        let stillRunningPids = runningScriptPids.filter(x => pids.includes(x));
+        if (stillRunningPids.length === 0) {
+            scriptsRunning = false;
+        }
+
         await ns.sleep(1000 * 10);
     }
 }
