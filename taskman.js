@@ -96,7 +96,6 @@ export async function main(ns) {
             await ns.sleep(1000 * 10);
 
             // Adjust reserved ram for scripts that stopped running
-
             let runningScripts = ns.ps('home');
             // array_column
             let runningScriptPids = runningScripts.map(function (value, index) {
@@ -152,7 +151,8 @@ export async function optimizeTargetServersBeforeRun(ns, targets, servers) {
                     continue;
                 }
                 batchesRun.push(encodedBatch);
-                ns.run('taskRunner.ns', 1, encodedBatch, serverToSetup);
+                let waitUntilDone = true;
+                ns.run('taskRunner.ns', 1, encodedBatch, serverToSetup, waitUntilDone);
                 break;
             }
         }
