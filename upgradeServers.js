@@ -28,7 +28,6 @@ export async function main(ns) {
         ns.exit();
     }
 
-    let stillRunning = [];
     for (let i = 0; i < ownedServers.length; i++) {
         let server = ownedServers[i];
         let serverMaxRam = ns.getServerMaxRam(server);
@@ -36,30 +35,12 @@ export async function main(ns) {
             continue;
         }
 
-        if (ns.ps(server).length > 0) {
-            stillRunning.push(server);
-            continue;
-        }
+        ns.killall();
         ns.deleteServer(server);
         ns.purchaseServer(server, maxAffordableRam);
     }
 
     if (stillRunning.length === 0) {
         return;
-    }
-
-    let upgradeDone = 0;
-    while (upgradeDone < stillRunning.length) {
-        for (let s = 0; s < stillRunning.length; s++) {
-            let server = stillRunning[s];
-            if (ns.ps(server).length > 0) {
-                continue;
-            }
-            ns.deleteServer(server);
-            ns.purchaseServer(server, maxAffordableRam);
-            upgradeDone++;
-        }
-
-        await ns.sleep(1000 * 60);
     }
 }
