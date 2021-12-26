@@ -62,7 +62,7 @@ export async function main(ns) {
             await ns.scp(filesToCopy, serverName);
         }
 
-        await optimizeTargetServersBeforeRun(ns, targets, serversToSetup);
+        await optimizeTargetServersBeforeRun(ns, targets, servers);
 
         while (true) {
             // We rebuild this queue every run
@@ -93,7 +93,7 @@ export async function main(ns) {
                 }
             }
 
-            await ns.sleep(1000 * 10);
+            await ns.sleep(1000 * 5);
 
             // Adjust reserved ram for scripts that stopped running
             let runningScripts = ns.ps('home');
@@ -135,11 +135,10 @@ export async function optimizeTargetServersBeforeRun(ns, targets, servers) {
             for (let job of batch) {
                 batchRamUse += job.ramUse;
             }
-
             // Search servers that can be assigned to each job in the queue
             for (let serverToSetup of servers) {
                 // Find smallest possible server for job
-                let availableRam = ns.getServerMaxRam(serverToSetup) - ns.getServerUsedRam(serverToSetup);
+                let availableRam = (serverToSetup.ramMax - serverToSetup.ramReserved);
                 if (availableRam < batchRamUse) {
                     continue;
                 }
@@ -151,12 +150,37 @@ export async function optimizeTargetServersBeforeRun(ns, targets, servers) {
                     continue;
                 }
                 batchesRun.push(encodedBatch);
-                let waitUntilDone = true;
-                ns.run('taskRunner.ns', 1, encodedBatch, serverToSetup, waitUntilDone);
+                serverToSetup.ramReserved += batchRamUse;
+                let pid = ns.run('taskRunner.ns', 1, encodedBatch, serverToSetup.hostname);
+                serverToSetup.tasks.push({ pid: pid, ramReserved: batchRamUse });
                 break;
             }
         }
-        await ns.sleep(1000 * 10);
+
+        await ns.sleep(1000 * 5);
+
+        // Adjust reserved ram for scripts that stopped running
+        let runningScripts = ns.ps('home');
+        // array_column
+        let runningScriptPids = runningScripts.map(function (value, index) {
+            return value['pid'];
+        })
+        for (let server of servers) {
+            if (server.tasks.length === 0) {
+                continue;
+            }
+            let stillRunningTasks = [];
+            for (let t = 0; t < server.tasks.length; t++) {
+                let task = server.tasks[t];
+                if (runningScriptPids.includes(task.pid)) {
+                    stillRunningTasks.push(task);
+                    continue;
+                }
+
+                server.ramReserved -= task.ramReserved;
+            }
+            server.tasks = stillRunningTasks;
+        }
     }
 
     while (ns.scriptRunning('taskRunner.ns', 'home')) {
@@ -177,7 +201,7 @@ function buildQueueForOptimization(ns, targets) {
         if (targetServer.hackDifficulty > targetServer.minDifficulty) {
             let weakenThreadsBeforeGrow = getWeakenThreads(targetServer.minDifficulty, targetServer.hackDifficulty);
             batch.push(
-                createJob(ns, targetServer.hostname, 'weaken.ns', weakenThreadsBeforeGrow, 100, 1)
+                createJob(ns, targetServer.hostname, 'weaken.ns', weakenThreadsBeforeGrow, 1000, 1)
             );
         }
 
@@ -201,7 +225,7 @@ function buildQueueForOptimization(ns, targets) {
             let weakenThreadsAfterGrow = getWeakenThreads(targetServer.minDifficulty, (targetServer.hackDifficulty + growSecurityIncrease));
 
             batch.push(
-                createJob(ns, targetServer.hostname, 'weaken.ns', weakenThreadsAfterGrow, (weakenTime - growTime - 100), 3)
+                createJob(ns, targetServer.hostname, 'weaken.ns', weakenThreadsAfterGrow, (weakenTime - growTime - 500), 3)
             );
 
             batch.push(
@@ -231,7 +255,7 @@ function buildQueue(ns, targets) {
         let weakenTime = ns.formulas.hacking.weakenTime(target.targetServer, ns.getPlayer());
 
         batch.push(
-            createJob(ns, target.targetServer.hostname, 'weaken.ns', target.weakenThreadsAfterHack, 100, 2)
+            createJob(ns, target.targetServer.hostname, 'weaken.ns', target.weakenThreadsAfterHack, 200, 2)
         );
         batch.push(
             createJob(ns, target.targetServer.hostname, 'weaken.ns', target.weakenThreadsAfterGrow, (weakenTime - growTime - 100), 4)
@@ -240,8 +264,7 @@ function buildQueue(ns, targets) {
             createJob(ns, target.targetServer.hostname, 'grow.ns', target.growThreads, (growTime - hackTime - 100), 3)
         );
         batch.push(
-            // TODO: We do not need the wait time here, and just wait at the end of the queue for maxHackTime. For now, this is good enough
-            createJob(ns, target.targetServer.hostname, 'hack.ns', target.hackThreads, (hackTime + 100), 1)
+            createJob(ns, target.targetServer.hostname, 'hack.ns', target.hackThreads, 100, 1)
         );
         queue.push(batch);
         batch = [];
