@@ -6,7 +6,6 @@ export async function main(ns) {
 
     ns.disableLog('sleep');
 
-
     let batch = JSON.parse(ns.args[0]);
     let server = ns.args[1]
 
@@ -31,14 +30,14 @@ async function workBatch(ns, batch, server) {
             )
         )
 
-        let pid = ns.exec(job.script, server, job.threads, job.target, job.order);
+        let uid = Math.round(Math.random() * Date.now());
+        let pid = ns.exec(job.script, server, job.threads, job.target, job.order, uid);
         if (pid === 0) {
-            ns.alert(ns.sprintf(
-                'Script %s with target %s (called on %s) did not start!',
-                job.script,
-                job.target,
-                server
-            ));
+            await ns.sleep(1);
+
+            // This really should never happen, but we try to minimize the chances.
+            uid = Math.round(Math.random() * Date.now());
+            pid = ns.exec(job.script, server, job.threads, job.target, job.order, uid);
         } else {
             pids.push(pid);
         }
