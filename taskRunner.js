@@ -7,10 +7,6 @@ export async function main(ns) {
     let batch = JSON.parse(ns.args[0]);
     let server = ns.args[1]
 
-    let waitUntilDone = false;
-    if (ns.args.length >= 3) {
-        waitUntilDone = (ns.args[2] === true);
-    }
     await workBatch(ns, batch, server, waitUntilDone);
 }
 
@@ -18,9 +14,8 @@ export async function main(ns) {
  * @param {NS} ns
  * @param {array} batch
  * @param {string} server
- * @param {boolean} waitUntilDone
  **/
-async function workBatch(ns, batch, server, waitUntilDone) {
+async function workBatch(ns, batch, server) {
     let order = 0;
     let lastJob = null;
     for (let job of batch) {
@@ -43,9 +38,8 @@ async function workBatch(ns, batch, server, waitUntilDone) {
         await ns.sleep(job.waitTime);
     }
 
-    if (waitUntilDone === false) {
-        return;
-    }
+    ns.tprint(lastJob);
+    ns.tprint(server);
 
     // wait until the final script stops running
     while(ns.isRunning(lastJob.script, server, lastJob.target, lastJob.order)) {
