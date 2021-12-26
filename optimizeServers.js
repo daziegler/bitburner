@@ -2,6 +2,12 @@ import { validateServers, getServersToHack, optimizeTargetServersBeforeRun } fro
 
 /** @param {NS} ns **/
 export async function main(ns) {
+    const filesToCopy = [
+        'hack.ns',
+        'weaken.ns',
+        'grow.ns',
+    ];
+
     let serversToSetup = await validateServers(ns);
     let serversToHack = await getServersToHack(ns, serversToSetup);
 
@@ -23,5 +29,11 @@ export async function main(ns) {
         return (ns.getServerMaxRam(b) - ns.getServerMaxRam(a));
     });
 
+    for (let serverName of serversToSetup) {
+        await ns.scp(filesToCopy, serverName);
+    }
+
     await optimizeTargetServersBeforeRun(ns, targets, serversToSetup);
+
+    ns.spawn('taskman.ns');
 }
