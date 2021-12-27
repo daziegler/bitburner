@@ -1,3 +1,4 @@
+
 /** @param {NS} ns **/
 export async function main(ns) {
     const filesToCopy = [
@@ -10,7 +11,10 @@ export async function main(ns) {
         ['servers', '']
     ]);
 
-    let argsServers = data.servers.split(',');
+    let argsServers = data.servers;
+    if (argsServers !== '') {
+        argsServers.split(',');
+    }
 
     disableLogs(ns);
 
