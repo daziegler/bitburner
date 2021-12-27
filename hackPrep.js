@@ -1,4 +1,4 @@
-import { validateServers, getServersToHack, optimizeTargetServersBeforeRun } from "taskman.ns";
+import { validateServers, getServersToHack, optimizeTargetServersBeforeRun } from "taskManager.ns";
 
 /** @param {NS} ns **/
 export async function main(ns) {
