@@ -6,117 +6,125 @@ export async function main(ns) {
         'grow.ns',
     ];
 
+    const data = ns.flags([
+        ['servers', '']
+    ]);
+
+    let argsServers = data.servers.split(',');
+
     disableLogs(ns);
 
+    let serversToSetup = await validateServers(ns);
+    let serversForHack = serversToSetup;
+    if (argsServers.length > 0) {
+        serversForHack = argsServers
+    }
+    let serversToHack = await getServersToHack(ns, serversForHack);
+
+    let targets = [];
+    for (let target of serversToHack) {
+        const targetServer = ns.getServer(target);
+
+        if (targetServer.moneyMax === 0) {
+            continue;
+        }
+
+        // We use a perfect Mock for all our calculations, since this is basically what we will have
+        const perfectServerToHack = getHackPerfectServer(targetServer);
+        const perfectServerToGrow = getGrowPerfectServer(targetServer);
+
+        const optimumHackThreads = getHackThreadsForServer(ns, perfectServerToHack);
+        const optimumGrowThreads = getGrowThreadsForServer(ns, perfectServerToGrow);
+
+        const hackSecurityIncrease = ns.hackAnalyzeSecurity(optimumHackThreads);
+        const growSecurityIncrease = ns.growthAnalyzeSecurity(optimumGrowThreads);
+
+        const minDifficultyForTarget = targetServer.minDifficulty;
+
+        const optimumWeakenThreadsAfterHack = getWeakenThreads(minDifficultyForTarget, minDifficultyForTarget + hackSecurityIncrease);
+        const optimumWeakenThreadsAfterGrow = getWeakenThreads(minDifficultyForTarget, minDifficultyForTarget + growSecurityIncrease);
+
+        const targetInfo = {
+            targetServer: perfectServerToHack,
+            hackThreads: optimumHackThreads,
+            growThreads: optimumGrowThreads,
+            weakenThreadsAfterHack: optimumWeakenThreadsAfterHack,
+            weakenThreadsAfterGrow: optimumWeakenThreadsAfterGrow
+        };
+
+        targets.push(targetInfo);
+    }
+
+    serversToSetup.sort(function (a, b) {
+        return (ns.getServerMaxRam(a) - ns.getServerMaxRam(b));
+    });
+
+    let servers = [];
+    for (let serverName of serversToSetup) {
+        servers.push({
+            'hostname': serverName,
+            'ramMax': ns.getServerMaxRam(serverName),
+            'ramReserved': 0,
+            'tasks': [],
+        })
+
+        await ns.scp(filesToCopy, serverName);
+    }
+
+    await optimizeTargetServersBeforeRun(ns, targets, servers);
+
     while (true) {
-        let serversToSetup = await validateServers(ns);
-        let serversToHack = await getServersToHack(ns, serversToSetup);
-
-        let targets = [];
-        for (let target of serversToHack) {
-            const targetServer = ns.getServer(target);
-
-            if (targetServer.moneyMax === 0) {
-                continue;
+        // We rebuild this queue every run
+        let queue = buildQueue(ns, targets);
+        for (let batch of queue) {
+            let batchRamUse = 0;
+            for (let job of batch) {
+                batchRamUse += job.ramUse;
             }
-
-            // We use a perfect Mock for all our calculations, since this is basically what we will have
-            const perfectServerToHack = getHackPerfectServer(targetServer);
-            const perfectServerToGrow = getGrowPerfectServer(targetServer);
-
-            const optimumHackThreads = getHackThreadsForServer(ns, perfectServerToHack);
-            const optimumGrowThreads = getGrowThreadsForServer(ns, perfectServerToGrow);
-
-            const hackSecurityIncrease = ns.hackAnalyzeSecurity(optimumHackThreads);
-            const growSecurityIncrease = ns.growthAnalyzeSecurity(optimumGrowThreads);
-
-            const minDifficultyForTarget = targetServer.minDifficulty;
-
-            const optimumWeakenThreadsAfterHack = getWeakenThreads(minDifficultyForTarget, minDifficultyForTarget + hackSecurityIncrease);
-            const optimumWeakenThreadsAfterGrow = getWeakenThreads(minDifficultyForTarget, minDifficultyForTarget + growSecurityIncrease);
-
-            const targetInfo = {
-                targetServer: perfectServerToHack,
-                hackThreads: optimumHackThreads,
-                growThreads: optimumGrowThreads,
-                weakenThreadsAfterHack: optimumWeakenThreadsAfterHack,
-                weakenThreadsAfterGrow: optimumWeakenThreadsAfterGrow
-            };
-
-            targets.push(targetInfo);
-        }
-
-        serversToSetup.sort(function (a, b) {
-            return (ns.getServerMaxRam(a) - ns.getServerMaxRam(b));
-        });
-
-        let servers = [];
-        for (let serverName of serversToSetup) {
-            servers.push({
-                'hostname': serverName,
-                'ramMax': ns.getServerMaxRam(serverName),
-                'ramReserved': 0,
-                'tasks': [],
-            })
-
-            await ns.scp(filesToCopy, serverName);
-        }
-
-        await optimizeTargetServersBeforeRun(ns, targets, servers);
-
-        while (true) {
-            // We rebuild this queue every run
-            let queue = buildQueue(ns, targets);
-            for (let batch of queue) {
-                let batchRamUse = 0;
-                for (let job of batch) {
-                    batchRamUse += job.ramUse;
-                }
-                // Search servers that can be assigned to each job in the queue
-                for (let serverToSetup of servers) {
-                    // Find smallest possible server for job
-                    let availableRam = (serverToSetup.ramMax - serverToSetup.ramReserved);
-                    if (availableRam < batchRamUse) {
-                        continue;
-                    }
-                    let encodedBatch = JSON.stringify(batch);
-                    if (ns.isRunning('taskRunner.ns', 'home', encodedBatch, serverToSetup.hostname)) {
-                        continue;
-                    }
-                    if ((ns.getServerMaxRam('home') - ns.getServerUsedRam('home')) < ns.getScriptRam('taskRunner.ns', 'home')) {
-                        continue;
-                    }
-                    serverToSetup.ramReserved += batchRamUse;
-                    let pid = ns.run('taskRunner.ns', 1, encodedBatch, serverToSetup.hostname);
-                    serverToSetup.tasks.push({ pid: pid, ramReserved: batchRamUse });
-                    break;
-                }
-            }
-
-            await ns.sleep(1000 * 5);
-
-            // Adjust reserved ram for scripts that stopped running
-            let runningScripts = ns.ps('home');
-            // array_column
-            let runningScriptPids = runningScripts.map(function (value, index) {
-                return value['pid'];
-            })
-            for (let server of servers) {
-                if (server.tasks.length === 0) {
+            // Search servers that can be assigned to each job in the queue
+            for (let serverToSetup of servers) {
+                // Find smallest possible server for job
+                let availableRam = (serverToSetup.ramMax - serverToSetup.ramReserved);
+                if (availableRam < batchRamUse) {
                     continue;
                 }
-                let stillRunningTasks = [];
-                for (let t = 0; t < server.tasks.length; t++) {
-                    let task = server.tasks[t];
-                    if (runningScriptPids.includes(task.pid)) {
-                        stillRunningTasks.push(task);
-                        continue;
-                    }
-
-                    server.ramReserved -= task.ramReserved;
+                let encodedBatch = JSON.stringify(batch);
+                if (ns.isRunning('taskRunner.ns', 'home', encodedBatch, serverToSetup.hostname)) {
+                    continue;
                 }
-                server.tasks = stillRunningTasks;
+                if ((ns.getServerMaxRam('home') - ns.getServerUsedRam('home')) < ns.getScriptRam('taskRunner.ns', 'home')) {
+                    continue;
+                }
+                serverToSetup.ramReserved += batchRamUse;
+                let pid = ns.run('taskRunner.ns', 1, encodedBatch, serverToSetup.hostname);
+                serverToSetup.tasks.push({ pid: pid, ramReserved: batchRamUse });
+                break;
             }
+        }
+
+        await ns.sleep(1000 * 5);
+
+        // Adjust reserved ram for scripts that stopped running
+        let runningScripts = ns.ps('home');
+        // array_column
+        let runningScriptPids = runningScripts.map(function (value, index) {
+            return value['pid'];
+        })
+        for (let server of servers) {
+            if (server.tasks.length === 0) {
+                continue;
+            }
+            let stillRunningTasks = [];
+            for (let t = 0; t < server.tasks.length; t++) {
+                let task = server.tasks[t];
+                if (runningScriptPids.includes(task.pid)) {
+                    stillRunningTasks.push(task);
+                    continue;
+                }
+
+                server.ramReserved -= task.ramReserved;
+            }
+            server.tasks = stillRunningTasks;
         }
     }
 }
