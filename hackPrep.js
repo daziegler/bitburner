@@ -11,6 +11,16 @@ export async function main(ns) {
     ns.disableLog('getServerMaxRam');
     ns.disableLog('getServerUsedRam');
 
+    const data = ns.flags([
+        ['hosts', ''],
+        ['targets', '']
+    ]);
+
+    let argsHosts = data.hosts;
+    if (argsHost !== '') {
+        argsHosts.split(',');
+    }
+
     let serversToSetup = validateServers(ns);
     let serversToHack = getServersToHack(ns, serversToSetup);
 
@@ -26,6 +36,10 @@ export async function main(ns) {
         };
 
         targets.push(targetInfo);
+    }
+
+    if (argsHosts.length > 0) {
+        serversToSetup = argsHosts
     }
 
     serversToSetup.sort(function (a, b) {
