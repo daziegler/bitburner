@@ -8,23 +8,26 @@ export async function main(ns) {
     ];
 
     const data = ns.flags([
-        ['servers', '']
+        ['hosts', []],
+        ['targets', []],
     ]);
 
-    let argsServers = data.servers;
-    if (argsServers !== '') {
-        argsServers.split(',');
-    }
+    let argsHosts = data.hosts;
+    let argsTargets = data.targets;
 
     disableLogs(ns);
 
     let serversToSetup = validateServers(ns);
     let serversForHack = serversToSetup;
-    if (argsServers.length > 0) {
-        serversForHack = argsServers
+    if (argsTargets.length > 0) {
+        serversForHack = argsTargets
     }
     let serversToHack = getServersToHack(ns, serversForHack);
     let targets = prepareServersToHack(ns, serversToHack);
+
+    if (argsHosts.length > 0) {
+        serversToSetup = argsHosts;
+    }
 
     serversToSetup.sort(function (a, b) {
         return (ns.getServerMaxRam(a) - ns.getServerMaxRam(b));
@@ -459,7 +462,7 @@ export function getHackThreadsForServer(ns, server) {
         return 1;
     }
 
-    return Math.ceil(desiredHackPercent / hackPercentPerThread);
+    return Math.floor(desiredHackPercent / hackPercentPerThread);
 }
 
 /**

@@ -12,17 +12,18 @@ export async function main(ns) {
     ns.disableLog('getServerUsedRam');
 
     const data = ns.flags([
-        ['hosts', ''],
-        ['targets', '']
+        ['hosts', []],
+        ['targets', []]
     ]);
 
     let argsHosts = data.hosts;
-    if (argsHost !== '') {
-        argsHosts.split(',');
-    }
-
+    let argsTargets = data.targets;
     let serversToSetup = validateServers(ns);
-    let serversToHack = getServersToHack(ns, serversToSetup);
+    let serversForHack = serversToSetup;
+    if (argsTargets.length > 0) {
+        serversForHack = argsTargets
+    }
+    let serversToHack = getServersToHack(ns, serversForHack);
 
     let targets = [];
     for (let target of serversToHack) {
