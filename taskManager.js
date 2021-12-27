@@ -14,46 +14,13 @@ export async function main(ns) {
 
     disableLogs(ns);
 
-    let serversToSetup = await validateServers(ns);
+    let serversToSetup = validateServers(ns);
     let serversForHack = serversToSetup;
     if (argsServers.length > 0) {
         serversForHack = argsServers
     }
-    let serversToHack = await getServersToHack(ns, serversForHack);
-
-    let targets = [];
-    for (let target of serversToHack) {
-        const targetServer = ns.getServer(target);
-
-        if (targetServer.moneyMax === 0) {
-            continue;
-        }
-
-        // We use a perfect Mock for all our calculations, since this is basically what we will have
-        const perfectServerToHack = getHackPerfectServer(targetServer);
-        const perfectServerToGrow = getGrowPerfectServer(targetServer);
-
-        const optimumHackThreads = getHackThreadsForServer(ns, perfectServerToHack);
-        const optimumGrowThreads = getGrowThreadsForServer(ns, perfectServerToGrow);
-
-        const hackSecurityIncrease = ns.hackAnalyzeSecurity(optimumHackThreads);
-        const growSecurityIncrease = ns.growthAnalyzeSecurity(optimumGrowThreads);
-
-        const minDifficultyForTarget = targetServer.minDifficulty;
-
-        const optimumWeakenThreadsAfterHack = getWeakenThreads(minDifficultyForTarget, minDifficultyForTarget + hackSecurityIncrease);
-        const optimumWeakenThreadsAfterGrow = getWeakenThreads(minDifficultyForTarget, minDifficultyForTarget + growSecurityIncrease);
-
-        const targetInfo = {
-            targetServer: perfectServerToHack,
-            hackThreads: optimumHackThreads,
-            growThreads: optimumGrowThreads,
-            weakenThreadsAfterHack: optimumWeakenThreadsAfterHack,
-            weakenThreadsAfterGrow: optimumWeakenThreadsAfterGrow
-        };
-
-        targets.push(targetInfo);
-    }
+    let serversToHack = getServersToHack(ns, serversForHack);
+    let targets = prepareServersToHack(ns, serversToHack);
 
     serversToSetup.sort(function (a, b) {
         return (ns.getServerMaxRam(a) - ns.getServerMaxRam(b));
@@ -131,6 +98,49 @@ export async function main(ns) {
 
 /**
  * @param {NS} ns
+ * @param {string[]} serversToHack
+ * @returns {array}
+ */
+export function prepareServersToHack(ns, serversToHack) {
+    let targets = [];
+    for (let target of serversToHack) {
+        const targetServer = ns.getServer(target);
+
+        if (targetServer.moneyMax === 0) {
+            continue;
+        }
+
+        // We use a perfect Mock for all our calculations, since this is basically what we will have
+        const perfectServerToHack = getHackPerfectServer(targetServer);
+        const perfectServerToGrow = getGrowPerfectServer(targetServer);
+
+        const optimumHackThreads = getHackThreadsForServer(ns, perfectServerToHack);
+        const optimumGrowThreads = getGrowThreadsForServer(ns, perfectServerToGrow);
+
+        const hackSecurityIncrease = ns.hackAnalyzeSecurity(optimumHackThreads);
+        const growSecurityIncrease = ns.growthAnalyzeSecurity(optimumGrowThreads);
+
+        const minDifficultyForTarget = targetServer.minDifficulty;
+
+        const optimumWeakenThreadsAfterHack = getWeakenThreads(minDifficultyForTarget, minDifficultyForTarget + hackSecurityIncrease);
+        const optimumWeakenThreadsAfterGrow = getWeakenThreads(minDifficultyForTarget, minDifficultyForTarget + growSecurityIncrease);
+
+        const targetInfo = {
+            targetServer: perfectServerToHack,
+            hackThreads: optimumHackThreads,
+            growThreads: optimumGrowThreads,
+            weakenThreadsAfterHack: optimumWeakenThreadsAfterHack,
+            weakenThreadsAfterGrow: optimumWeakenThreadsAfterGrow
+        };
+
+        targets.push(targetInfo);
+    }
+
+    return targets;
+}
+
+/**
+ * @param {NS} ns
  * @param {array} targets
  * @param {array} servers
  **/
@@ -199,6 +209,7 @@ export async function optimizeTargetServersBeforeRun(ns, targets, servers) {
 /**
  * @param {NS} ns
  * @param {array} targets
+ * @return {array}
  **/
 function buildQueueForOptimization(ns, targets) {
     let batch = [];
@@ -253,6 +264,7 @@ function buildQueueForOptimization(ns, targets) {
 /**
  * @param {NS} ns
  * @param {array} targets
+ * @return {array}
  **/
 function buildQueue(ns, targets) {
     let batch = [];
@@ -281,6 +293,15 @@ function buildQueue(ns, targets) {
     return queue;
 }
 
+/**
+ * @param {NS} ns
+ * @param {string} target
+ * @param {string} scriptName
+ * @param {Number} threads
+ * @param {Number} waitTime
+ * @param {Number} order
+ * @return {{threads, ramUse: number, waitTime, script, target, order}}
+ */
 export function createJob(ns, target, scriptName, threads, waitTime, order) {
     let ramUse = threads * ns.getScriptRam(scriptName);
 
@@ -295,30 +316,11 @@ export function createJob(ns, target, scriptName, threads, waitTime, order) {
 }
 
 /**
+ *
  * @param {NS} ns
- * @param {array} servers
- **/
-export async function getOptimalServer(ns, servers) {
-    let optimalServer = '';
-    let optimalVal = 0;
-    let currVal;
-    let currTime;
-
-    for (let i = 0; i < servers.length; i++) {
-        currVal = ns.getServerMaxMoney(servers[i]);
-        currTime = ns.getWeakenTime(servers[i]) + ns.getGrowTime(servers[i]) + ns.getHackTime(servers[i]);
-        currVal /= currTime;
-        if (currVal >= optimalVal) {
-            optimalVal = currVal;
-            optimalServer = servers[i];
-        }
-    }
-
-    return optimalServer;
-}
-
-/** @param {NS} ns **/
-export async function validateServers(ns) {
+ * @return {string[]}
+ */
+export function validateServers(ns) {
     let serversToHack = ns.scan('home');
     let validatedServers = [];
     let ignoredServers = [];
@@ -392,8 +394,10 @@ export async function validateServers(ns) {
 /**
  * @param {NS} ns
  * @param {array} validServers
+ * @return {string[]}
  **/
-export async function getServersToHack(ns, validServers) {
+export function getServersToHack(ns, validServers) {
+    // Exclude owned servers from "valid hack targets"
     let ownServers = ns.getPurchasedServers();
     let validatedServersWithoutOwn = [];
     for (let v = 0; v < validServers.length; v++) {
@@ -406,7 +410,7 @@ export async function getServersToHack(ns, validServers) {
     // Order valid servers by "value"
     let orderedServersToHack = [];
     while (validatedServersWithoutOwn.length > 0) {
-        let optimalServer = await getOptimalServer(ns, validatedServersWithoutOwn);
+        let optimalServer = getOptimalServer(ns, validatedServersWithoutOwn);
         orderedServersToHack.push(optimalServer);
         validatedServersWithoutOwn.splice(validatedServersWithoutOwn.indexOf(optimalServer), 1);
     }
@@ -414,9 +418,35 @@ export async function getServersToHack(ns, validServers) {
     return orderedServersToHack;
 }
 
+
+/**
+ * @param {NS} ns
+ * @param {array} servers
+ * @return {string}
+ **/
+export function getOptimalServer(ns, servers) {
+    let optimalServer = '';
+    let optimalVal = 0;
+    let currVal;
+    let currTime;
+
+    for (let i = 0; i < servers.length; i++) {
+        currVal = ns.getServerMaxMoney(servers[i]);
+        currTime = ns.getWeakenTime(servers[i]) + ns.getGrowTime(servers[i]) + ns.getHackTime(servers[i]);
+        currVal /= currTime;
+        if (currVal >= optimalVal) {
+            optimalVal = currVal;
+            optimalServer = servers[i];
+        }
+    }
+
+    return optimalServer;
+}
+
 /**
  * @param {NS} ns
  * @param {Server} server
+ * @return {Number}
  */
 export function getHackThreadsForServer(ns, server) {
     let desiredHackPercent = 0.5;
@@ -431,6 +461,7 @@ export function getHackThreadsForServer(ns, server) {
 /**
  * @param {NS} ns
  * @param {Server} server
+ * @return {Number}
  */
 export function getGrowThreadsForServer(ns, server) {
     let growThreads = 0;
@@ -447,6 +478,7 @@ export function getGrowThreadsForServer(ns, server) {
 /**
  * @param {Number} minDifficulty
  * @param {Number} hackDifficulty
+ * @return {Number}
  */
 export function getWeakenThreads(minDifficulty, hackDifficulty) {
     let weakenPerThread = 0.05;
@@ -458,16 +490,24 @@ export function getWeakenThreads(minDifficulty, hackDifficulty) {
     return Math.ceil(toWeakenBy / weakenPerThread);
 }
 
-// A server is perfect for hacking if it has 0 security and 100% of its max money
+/**
+ * Return a deep copy of the given server with  0 security and 100% of its max money
+ * @param {Server} server
+ * @return {Server}
+ **/
 function getHackPerfectServer(server) {
-    let optimalServerDeepClone = JSON.parse(JSON.stringify(server));;
+    let optimalServerDeepClone = JSON.parse(JSON.stringify(server));
     optimalServerDeepClone.moneyAvailable = server.maxMoney;
     optimalServerDeepClone.hackDifficulty = optimalServerDeepClone.minDifficulty;
 
     return optimalServerDeepClone;
 }
 
-// A server is perfect for growth if it has 0 security and 50% of its max money
+/**
+ * Return a deep copy of the given server with  0 security and 50% of its max money
+ * @param {Server} server
+ * @return {Server}
+ **/
 function getGrowPerfectServer(server) {
     let optimalServerDeepClone = JSON.parse(JSON.stringify(server));
     optimalServerDeepClone.moneyAvailable = optimalServerDeepClone.maxMoney * 0.5;
@@ -476,7 +516,10 @@ function getGrowPerfectServer(server) {
     return optimalServerDeepClone;
 }
 
-/** @param {NS} ns **/
+/**
+ * @param {NS} ns
+ * @return {Number}
+ **/
 export function getAvailablePortScripts(ns) {
     let availablePortScripts = 0;
 

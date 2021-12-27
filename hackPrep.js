@@ -11,8 +11,8 @@ export async function main(ns) {
     ns.disableLog('getServerMaxRam');
     ns.disableLog('getServerUsedRam');
 
-    let serversToSetup = await validateServers(ns);
-    let serversToHack = await getServersToHack(ns, serversToSetup);
+    let serversToSetup = validateServers(ns);
+    let serversToHack = getServersToHack(ns, serversToSetup);
 
     let targets = [];
     for (let target of serversToHack) {
