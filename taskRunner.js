@@ -17,7 +17,7 @@ export async function main(ns) {
  * @param {array} batch
  * @param {string} server
  **/
-async function workBatch(ns, batch, server) {
+export async function workBatch(ns, batch, server) {
     let pids = [];
     for (let job of batch) {
         ns.print(
