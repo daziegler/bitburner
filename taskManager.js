@@ -237,7 +237,7 @@ function buildQueueForOptimization(ns, targets) {
                 availableMoney = 1;
             }
             let missingMoney = maxMoney - availableMoney;
-            let growFactor = Math.ceil((missingMoney / (availableMoney / 100)) / 100);
+            let growFactor = Math.ceil(missingMoney / (availableMoney / 100));
             let growThreads = Math.ceil(ns.growthAnalyze(targetServer.hostname, growFactor));
             let growTime = ns.getGrowTime(targetServer.hostname);
             if (growThreads < 1) {
