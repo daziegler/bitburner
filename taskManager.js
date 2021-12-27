@@ -35,10 +35,14 @@ export async function main(ns) {
 
     let servers = [];
     for (let serverName of serversToSetup) {
+        let ramReserved = 0;
+        if (serverName === 'home') {
+            ramReserved = 50000
+        }
         servers.push({
             'hostname': serverName,
             'ramMax': ns.getServerMaxRam(serverName),
-            'ramReserved': 0,
+            'ramReserved': ramReserved,
             'tasks': [],
         })
 
