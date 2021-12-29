@@ -1,3 +1,4 @@
+const percentageTaken = 0.5;
 
 /** @param {NS} ns **/
 export async function main(ns) {
@@ -35,14 +36,10 @@ export async function main(ns) {
 
     let servers = [];
     for (let serverName of serversToSetup) {
-        let ramReserved = 0;
-        if (serverName === 'home') {
-            ramReserved = 50000
-        }
         servers.push({
             'hostname': serverName,
             'ramMax': ns.getServerMaxRam(serverName),
-            'ramReserved': ramReserved,
+            'ramReserved': 0,
             'tasks': [],
         })
 
@@ -186,7 +183,7 @@ export async function optimizeTargetServersBeforeRun(ns, targets, servers) {
             }
         }
 
-        await ns.sleep(1000 * 5);
+        await ns.sleep(5000);
 
         // Adjust reserved ram for scripts that stopped running
         let runningScripts = ns.ps('home');
@@ -285,18 +282,24 @@ function buildQueue(ns, targets) {
         let growTime = ns.formulas.hacking.growTime(target.targetServer, ns.getPlayer());
         let weakenTime = ns.formulas.hacking.weakenTime(target.targetServer, ns.getPlayer());
 
+        let targetServer = target.targetServer.hostname;
+
         batch.push(
-            createJob(ns, target.targetServer.hostname, 'weaken.ns', target.weakenThreadsAfterHack, 200, 2)
+            createJob(ns, targetServer, 'weaken.ns', target.weakenThreadsAfterHack, 200, 2)
         );
         batch.push(
-            createJob(ns, target.targetServer.hostname, 'weaken.ns', target.weakenThreadsAfterGrow, (weakenTime - growTime - 100), 4)
+            createJob(ns, targetServer, 'weaken.ns', target.weakenThreadsAfterGrow, (weakenTime - growTime - 100), 4)
         )
-        batch.push(
-            createJob(ns, target.targetServer.hostname, 'grow.ns', target.growThreads, (growTime - hackTime - 100), 3)
-        );
-        batch.push(
-            createJob(ns, target.targetServer.hostname, 'hack.ns', target.hackThreads, 100, 1)
-        );
+        if (ns.getServerMinSecurityLevel(targetServer) === ns.getServerSecurityLevel(targetServer)) {
+            batch.push(
+                createJob(ns, targetServer, 'grow.ns', target.growThreads, (growTime - hackTime - 100), 3)
+            );
+        }
+        if (ns.getServerMaxMoney(targetServer) === ns.getServerMoneyAvailable(targetServer)) {
+            batch.push(
+                createJob(ns, targetServer, 'hack.ns', target.hackThreads, 100, 1)
+            );
+        }
         queue.push(batch);
         batch = [];
     }
@@ -460,13 +463,12 @@ export function getOptimalServer(ns, servers) {
  * @return {Number}
  */
 export function getHackThreadsForServer(ns, server) {
-    let desiredHackPercent = 0.5;
     let hackPercentPerThread = ns.formulas.hacking.hackPercent(server, ns.getPlayer());
     if (hackPercentPerThread === 0) {
         return 1;
     }
 
-    return Math.floor(desiredHackPercent / hackPercentPerThread);
+    return Math.floor(percentageTaken / hackPercentPerThread);
 }
 
 /**
@@ -521,7 +523,7 @@ function getHackPerfectServer(server) {
  **/
 function getGrowPerfectServer(server) {
     let optimalServerDeepClone = JSON.parse(JSON.stringify(server));
-    optimalServerDeepClone.moneyAvailable = optimalServerDeepClone.maxMoney * 0.5;
+    optimalServerDeepClone.moneyAvailable = optimalServerDeepClone.maxMoney * (1 - percentageTaken);
     optimalServerDeepClone.hackDifficulty = optimalServerDeepClone.minDifficulty;
 
     return optimalServerDeepClone;
@@ -559,6 +561,7 @@ function disableLogs(ns) {
     ns.disableLog('scan');
     ns.disableLog('exec');
     ns.disableLog('killall');
+    ns.disableLog('sleep');
     ns.disableLog('getHackingLevel')
     ns.disableLog('getServerMinSecurityLevel');
     ns.disableLog('getServerSecurityLevel');
