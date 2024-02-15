@@ -1,79 +1,94 @@
 /** @param {NS} ns **/
 export async function main(ns) {
-	let data = ns.flags([
-		['lvl', 200],
-		['ram', 64],
-		['cpu', 16],
-	]);
+  let data = ns.flags([
+    ['lvl', 200],
+    ['ram', 64],
+    ['core', 16],
+  ]);
 
-	const level = data.lvl;
-	const ram = data.ram;
-	const core = data.cpu;
+  const targetLevel = data.lvl;
+  const targetRam = data.ram;
+  const targetCore = data.core;
 
-	// Interval in which we retry the purchase (ms)
-	const waitTime = 1000 * 60;
+  // Interval in which we retry the purchase (ms)
+  const waitTime = 1000 * 10;
 
-	if (level < 1 || level > 200) {
-		ns.tprintf('Level must be between 1 and 200. %d given', level);
-	}
+  if (targetLevel < 1 || targetLevel > 200) {
+    ns.tprintf('Level must be between 1 and 200. %d given', targetLevel);
+    return;
+  }
 
-	if ([1,2,4,8,16,32,64].includes(ram) === false) {
-		ns.tprintf('Ram must be a power of two (up to 64). %d given', ram);
-	}
+  if ([1, 2, 4, 8, 16, 32, 64].includes(targetRam) === false) {
+    ns.tprintf('Ram must be a power of two (up to 64). %d given', targetRam);
+    return;
+  }
 
-	if (core < 1 || core > 16) {
-		ns.tprintf('Core must be between 1 and 16. %d given', core);
-	}
+  if (targetCore < 1 || targetCore > 16) {
+    ns.tprintf('Core must be between 1 and 16. %d given', targetCore);
+    return;
+  }
 
-	const ownedNodes = ns.hacknet.numNodes();
-	for(let n = 0; n < ownedNodes; n++) {
-		if (ns.hacknet.getNodeStats(n).level < level) {
-			while (ns.hacknet.getNodeStats(n).level < level) {
-				let lvlCost = ns.hacknet.getLevelUpgradeCost(n, 1);
-				while (ns.getPlayer().money < lvlCost) {
-					ns.print(ns.sprintf(
-						'Need $%d for the upgrade of node %d from lvl %d. Have $%d',
-						lvlCost,
-						n,
-						ns.hacknet.getNodeStats(n).level,
-						ns.getPlayer().money
-					));
-					await ns.sleep(waitTime);
-				}
-				ns.hacknet.upgradeLevel(n, 1);
-			}
-		}
-		if (ns.hacknet.getNodeStats(n).ram < ram) {
-			while (ns.hacknet.getNodeStats(n).ram < ram) {
-				let ramCost = ns.hacknet.getRamUpgradeCost(n, 1);
-				while (ns.getPlayer().money < ramCost) {
-					ns.print(ns.sprintf(
-						'Need $%d for the upgrade of node %d from ram %d. Have $%d',
-						ramCost,
-						n,
-						ns.hacknet.getNodeStats(n).ram,
-						ns.getPlayer().money
-					));
-					await ns.sleep(waitTime);
-				}
-				ns.hacknet.upgradeRam(n, 1);
-			}
-		}
-		if (ns.hacknet.getNodeStats(n).cores < core) {
-			while (ns.hacknet.getNodeStats(n).cores < core) {
-				let coreCost = ns.hacknet.getCoreUpgradeCost(n, 1);
-				while (ns.getPlayer().money < coreCost) {
-					ns.print(ns.sprintf(
-						'Need $%d for the upgrade of node %d from core %d. Have $%d',
-						coreCost,
-						n,
-						ns.hacknet.getNodeStats(n).cores,
-						ns.getPlayer().money
-					));
-					await ns.sleep(waitTime);
-				}
-				ns.hacknet.upgradeCore(n, 1);
-			}
-		}
-	}
+  const ownedNodes = ns.hacknet.numNodes();
+
+  let upgradesDone = 0;
+  while (upgradesDone < (3 * ownedNodes)) {
+    for (let node = 0; node < ownedNodes; node++) {
+      if (ns.hacknet.getNodeStats(node).level < targetLevel) {
+        upgradesDone += await upgradeNodeLevel(ns, node, targetLevel);
+      }
+      if (ns.hacknet.getNodeStats(node).ram < targetRam) {
+        upgradesDone += await upgradeNodeRAM(ns, node, targetRam);
+      }
+      if (ns.hacknet.getNodeStats(node).cores < targetCore) {
+        upgradesDone += await upgradeNodeCores(ns, node, targetCore);
+      }
+    }
+
+    await ns.sleep(waitTime);
+  }
+}
+
+/**
+ * @param {NS} ns
+ * @param {Number} node
+ * @param {Number} targetLevel
+ */
+async function upgradeNodeLevel(ns, node, targetLevel) {
+  while (ns.hacknet.getNodeStats(node).level < targetLevel) {
+    if (ns.getPlayer().money < ns.hacknet.getLevelUpgradeCost(node, 1)) {
+      return 0;
+    }
+    ns.hacknet.upgradeLevel(node, 1);
+  }
+  return 1;
+}
+
+/**
+ * @param {NS} ns
+ * @param {Number} node
+ * @param {Number} targetLevel
+ */
+async function upgradeNodeRAM(ns, node, targetRam) {
+  while (ns.hacknet.getNodeStats(node).ram < targetRam) {
+    if (ns.getPlayer().money < ns.hacknet.getRamUpgradeCost(node, 1)) {
+      return 0;
+    }
+    ns.hacknet.upgradeRam(node, 1);
+  }
+  return 1;
+}
+
+/**
+ * @param {NS} ns
+ * @param {Number} node
+ * @param {Number} targetCore
+ */
+async function upgradeNodeCores(ns, node, targetCore) {
+  while (ns.hacknet.getNodeStats(node).cores < targetCore) {
+    if (ns.getPlayer().money < ns.hacknet.getCoreUpgradeCost(node, 1)) {
+      return 0;
+    }
+    ns.hacknet.upgradeCore(node, 1);
+  }
+  return 1;
 }
